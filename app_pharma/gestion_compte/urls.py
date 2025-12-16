@@ -16,4 +16,13 @@ urlpatterns = [
     
     # voir profile
     path('voir_profil/',views.voir_profile,name='voir-profile'),
+    
+    # confidentialite
+    path('centre_confidentialite/',views.centre_confidentialite,name='centre-confidentialite'),
+    
+    # connexion
+    path('connexion/',views.connexion,name='connexion'),
+    
+    # register
+    path('register/',views.register,name='register'),
 ]

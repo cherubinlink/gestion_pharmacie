@@ -15,5 +15,16 @@ def analyse(request):
 def parametre_compte(request):
     return render(request,'gestion_compte/parametre_compte.html')
 
+
 def voir_profile(request):
     return render(request,'gestion_compte/voir_profile.html')
+
+def centre_confidentialite(request):
+    return render(request,'gestion_compte/centre_confidentialite.html')
+
+
+def connexion(request):
+    return render(request,'gestion_compte/connexion.html')
+
+def register(request):
+    return render(request,'gestion_compte/register.html')

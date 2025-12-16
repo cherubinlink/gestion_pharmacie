@@ -198,11 +198,11 @@
               <i class="ti ti-power"></i>
               <span>Logout</span>
             </a>
-            <a href="#!" class="dropdown-item">
+            <a href="{% url 'gestion_compte:connexion' %}" class="dropdown-item">
               <i class="ti ti-power"></i>
               <span>Connexion</span>
             </a>
-            <a href="#!" class="dropdown-item">
+            <a href="{% url 'gestion_compte:register' %}" class="dropdown-item">
               <i class="ti ti-power"></i>
               <span>Compte</span>
             </a>
@@ -215,11 +215,15 @@
             </a>
             <a href="{% url 'gestion_compte:parametre_compte' %}" class="dropdown-item">
               <i class="ti ti-user"></i>
-              <span>Paramètres du compte</span>
+              <span>Paramètres de compte</span>
             </a>
-            <a href="#!" class="dropdown-item">
+            <a href="{% url 'gestion_compte:centre-confidentialite' %}" class="dropdown-item">
               <i class="ti ti-lock"></i>
               <span>Centre de confidentialite</span>
+            </a>
+            <a href="" class="dropdown-item">
+              <i class="ti ti-user"></i>
+              <span>Ressources Humaines</span>
             </a>
             <a href="#!" class="dropdown-item">
               <i class="ti ti-messages"></i>

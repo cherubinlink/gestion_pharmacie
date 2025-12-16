@@ -8,7 +8,7 @@ from django.contrib.admin import SimpleListFilter
 from django.utils.safestring import mark_safe
 from gestion_compte.models import (
     Utilisateur, Pharmacie, Role, PermissionSysteme, RolePermission,
-    MembrePharmacie, HistoriqueConnexion, HistoriqueModificationPharmacie
+    MembrePharmacie, HistoriqueConnexion, HistoriqueModificationPharmacie,ProfilUtilisateur
 )
 
 # Register your models here.
@@ -110,7 +110,50 @@ class PharmacieActiveFilter(SimpleListFilter):
             return queryset.filter(pharmacie_active_id=value)
         return queryset
 
-
+class ProfilUtilisateurInline(admin.StackedInline):
+    """Inline pour afficher le profil dans l'admin utilisateur"""
+    model = ProfilUtilisateur
+    can_delete = False
+    verbose_name_plural = 'Profil utilisateur'
+    fk_name = 'utilisateur'
+    
+    fieldsets = (
+        ('Informations personnelles', {
+            'fields': ('genre', 'situation_matrimoniale', 'nationalite', 'lieu_naissance')
+        }),
+        ('Documents d\'identité', {
+            'fields': ('numero_cni', 'photo_cni_recto', 'photo_cni_verso'),
+            'classes': ('collapse',)
+        }),
+        ('Informations professionnelles', {
+            'fields': ('profession', 'diplome', 'specialite', 'numero_ordre', 'annees_experience')
+        }),
+        ('Contact d\'urgence', {
+            'fields': ('contact_urgence_nom', 'contact_urgence_telephone', 'contact_urgence_relation'),
+            'classes': ('collapse',)
+        }),
+        ('Préférences', {
+            'fields': ('theme', 'langue', 'notifications_email', 'notifications_sms', 'notifications_push')
+        }),
+        ('Informations bancaires', {
+            'fields': ('nom_banque', 'numero_compte', 'iban'),
+            'classes': ('collapse',)
+        }),
+        ('Réseaux sociaux', {
+            'fields': ('facebook', 'linkedin', 'twitter'),
+            'classes': ('collapse',)
+        }),
+        ('Biographie et notes', {
+            'fields': ('biographie', 'notes_internes'),
+            'classes': ('collapse',)
+        }),
+        ('Statistiques', {
+            'fields': ('score_points', 'niveau', 'badge', 'profil_complet', 'pourcentage_completion'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('profil_complet', 'pourcentage_completion')
 
 
 # ==================== ADMIN UTILISATEUR ====================
@@ -171,7 +214,7 @@ class UtilisateurAdmin(BaseUserAdmin):
         'ip_derniere_connexion', 'tentatives_connexion', 'derniere_tentative'
     )
     
-    inlines = [PharmaciesInline]
+    inlines = [ProfilUtilisateurInline,PharmaciesInline]
     
     def get_full_name_display(self, obj):
         return obj.get_full_name()
@@ -202,6 +245,27 @@ class UtilisateurAdmin(BaseUserAdmin):
             count
         )
     nb_pharmacies.short_description = "Pharmacies"
+    
+    def profil_completion(self, obj):
+        """Affiche le pourcentage de complétion du profil"""
+        if hasattr(obj, 'profil'):
+            pct = obj.profil.pourcentage_completion
+            if pct >= 80:
+                color = '#28a745'  # Vert
+            elif pct >= 50:
+                color = '#ffc107'  # Jaune
+            else:
+                color = '#dc3545'  # Rouge
+            
+            return format_html(
+                '<div style="width: 100px; background-color: #e9ecef; border-radius: 3px; overflow: hidden;">'
+                '<div style="width: {}%; background-color: {}; color: white; text-align: center; '
+                'padding: 2px 0; font-size: 10px; font-weight: bold;">{} %</div>'
+                '</div>',
+                pct, color, pct
+            )
+        return mark_safe('<span style="color: gray;">N/A</span>')
+    profil_completion.short_description = "Profil"
     
     def derniere_connexion_display(self, obj):
         if obj.date_derniere_connexion:
@@ -571,4 +635,53 @@ class HistoriqueModificationPharmacieAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         return False
 
+@admin.register(ProfilUtilisateur)
+class ProfilUtilisateurAdmin(admin.ModelAdmin):
+    """Administration du profil utilisateur (vue séparée)"""
+    
+    list_display = (
+        'utilisateur', 'genre', 'profession', 'numero_ordre',
+        'pourcentage_completion', 'profil_complet', 'date_creation'
+    )
+    
+    list_filter = ('genre', 'profil_complet', 'theme', 'langue', 'date_creation')
+    search_fields = ('utilisateur__email', 'utilisateur__first_name', 'utilisateur__last_name', 'profession', 'numero_ordre')
+    
+    readonly_fields = ('profil_complet', 'pourcentage_completion', 'date_creation', 'date_modification')
+    
+    fieldsets = (
+        ('Utilisateur', {
+            'fields': ('utilisateur',)
+        }),
+        ('Informations personnelles', {
+            'fields': ('genre', 'situation_matrimoniale', 'nationalite', 'lieu_naissance')
+        }),
+        ('Documents', {
+            'fields': ('numero_cni', 'photo_cni_recto', 'photo_cni_verso')
+        }),
+        ('Professionnel', {
+            'fields': ('profession', 'diplome', 'specialite', 'numero_ordre', 'annees_experience')
+        }),
+        ('Contact d\'urgence', {
+            'fields': ('contact_urgence_nom', 'contact_urgence_telephone', 'contact_urgence_relation')
+        }),
+        ('Préférences', {
+            'fields': ('theme', 'langue', 'notifications_email', 'notifications_sms', 'notifications_push')
+        }),
+        ('Informations bancaires', {
+            'fields': ('nom_banque', 'numero_compte', 'iban')
+        }),
+        ('Réseaux sociaux', {
+            'fields': ('facebook', 'linkedin', 'twitter')
+        }),
+        ('Biographie', {
+            'fields': ('biographie', 'notes_internes')
+        }),
+        ('Gamification', {
+            'fields': ('score_points', 'niveau', 'badge')
+        }),
+        ('Métadonnées', {
+            'fields': ('profil_complet', 'pourcentage_completion', 'date_creation', 'date_modification')
+        }),
+    )
 

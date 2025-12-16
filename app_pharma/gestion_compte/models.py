@@ -322,6 +322,197 @@ class Pharmacie(models.Model):
         score_optionnels = (optionnels_remplis / len(champs_optionnels)) * 30
         
         return int(score_obligatoires + score_optionnels)
+    
+
+class ProfilUtilisateur(models.Model):
+    """
+    Profil étendu pour chaque utilisateur avec informations complémentaires
+    """
+    
+    GENRE_CHOICES = [
+        ('homme', 'Homme'),
+        ('femme', 'Femme'),
+        ('autre', 'Autre'),
+    ]
+    
+    SITUATION_MATRIMONIALE_CHOICES = [
+        ('celibataire', 'Célibataire'),
+        ('marie', 'Marié(e)'),
+        ('divorce', 'Divorcé(e)'),
+        ('veuf', 'Veuf/Veuve'),
+    ]
+    
+    # Relation One-to-One avec Utilisateur
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    utilisateur = models.OneToOneField(
+        Utilisateur,
+        on_delete=models.CASCADE,
+        related_name='profil'
+    )
+    
+    # Informations personnelles supplémentaires
+    genre = models.CharField(max_length=10, choices=GENRE_CHOICES, blank=True)
+    situation_matrimoniale = models.CharField(
+        max_length=20,
+        choices=SITUATION_MATRIMONIALE_CHOICES,
+        blank=True
+    )
+    nationalite = models.CharField(max_length=100, default='Camerounaise')
+    lieu_naissance = models.CharField(max_length=200, blank=True)
+    
+    # Documents d'identité
+    numero_cni = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Numéro CNI",
+        help_text="Numéro de Carte Nationale d'Identité"
+    )
+    photo_cni_recto = models.ImageField(
+        upload_to='documents/cni/',
+        blank=True,
+        null=True,
+        verbose_name="Photo CNI (Recto)"
+    )
+    photo_cni_verso = models.ImageField(
+        upload_to='documents/cni/',
+        blank=True,
+        null=True,
+        verbose_name="Photo CNI (Verso)"
+    )
+    
+    # Informations professionnelles
+    profession = models.CharField(max_length=200, blank=True)
+    diplome = models.CharField(max_length=200, blank=True)
+    specialite = models.CharField(max_length=200, blank=True)
+    numero_ordre = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Numéro d'ordre professionnel (pour pharmaciens)"
+    )
+    annees_experience = models.IntegerField(
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0), MaxValueValidator(60)]
+    )
+    
+    # Informations de contact d'urgence
+    contact_urgence_nom = models.CharField(max_length=200, blank=True)
+    contact_urgence_telephone = models.CharField(
+        max_length=20,
+        blank=True,
+        validators=[RegexValidator(r'^\+?1?\d{9,15}$')]
+    )
+    contact_urgence_relation = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Ex: Époux/Épouse, Parent, Ami, etc."
+    )
+    
+    # Préférences utilisateur
+    theme = models.CharField(
+        max_length=20,
+        choices=[('clair', 'Clair'), ('sombre', 'Sombre')],
+        default='clair'
+    )
+    langue = models.CharField(
+        max_length=10,
+        choices=[('fr', 'Français'), ('en', 'Anglais')],
+        default='fr'
+    )
+    notifications_email = models.BooleanField(default=True)
+    notifications_sms = models.BooleanField(default=False)
+    notifications_push = models.BooleanField(default=True)
+    
+    # Informations bancaires
+    nom_banque = models.CharField(max_length=200, blank=True,null=True)
+    numero_compte = models.CharField(max_length=100, blank=True,null=True)
+    iban = models.CharField(max_length=100, blank=True,null=True)
+    
+    # Réseaux sociaux
+    facebook = models.URLField(blank=True,null=True)
+    linkedin = models.URLField(blank=True,null=True)
+    twitter = models.URLField(blank=True,null=True)
+    
+    # Biographie et notes
+    biographie = models.TextField(
+        blank=True,
+        max_length=1000,
+        help_text="Courte biographie ou présentation"
+    )
+    notes_internes = models.TextField(
+        blank=True,
+        help_text="Notes visibles uniquement par les administrateurs"
+    )
+    
+    # Statistiques et gamification
+    score_points = models.IntegerField(default=0)
+    niveau = models.IntegerField(default=1)
+    badge = models.CharField(max_length=100, blank=True)
+    
+    # Métadonnées
+    profil_complet = models.BooleanField(default=False)
+    pourcentage_completion = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Profil utilisateur"
+        verbose_name_plural = "Profils utilisateurs"
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['utilisateur']),
+            models.Index(fields=['numero_ordre']),
+        ]
+    
+    def __str__(self):
+        return f"Profil de {self.utilisateur.get_full_name()}"
+    
+    def save(self, *args, **kwargs):
+        # Calculer le pourcentage de complétion
+        self.pourcentage_completion = self.calculer_completion()
+        self.profil_complet = self.pourcentage_completion >= 80
+        super().save(*args, **kwargs)
+    
+    def calculer_completion(self):
+        """Calcule le pourcentage de complétion du profil"""
+        champs_importants = [
+            self.genre,
+            self.utilisateur.date_naissance,
+            self.utilisateur.telephone,
+            self.utilisateur.adresse,
+            self.utilisateur.ville,
+            self.nationalite,
+            self.profession,
+        ]
+        
+        champs_optionnels = [
+            self.situation_matrimoniale,
+            self.lieu_naissance,
+            self.numero_cni,
+            self.diplome,
+            self.contact_urgence_nom,
+            self.contact_urgence_telephone,
+            self.biographie,
+        ]
+        
+        remplis_importants = sum(1 for champ in champs_importants if champ)
+        remplis_optionnels = sum(1 for champ in champs_optionnels if champ)
+        
+        # 70% pour les champs importants, 30% pour les optionnels
+        score_importants = (remplis_importants / len(champs_importants)) * 70
+        score_optionnels = (remplis_optionnels / len(champs_optionnels)) * 30
+        
+        return int(score_importants + score_optionnels)
+    
+    def incrementer_points(self, points):
+        """Ajoute des points au score de l'utilisateur"""
+        self.score_points += points
+        # Calculer le niveau basé sur les points
+        self.niveau = (self.score_points // 100) + 1
+        self.save()
 
 
 class Role(models.Model):

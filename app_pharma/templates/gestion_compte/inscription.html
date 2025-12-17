@@ -1,0 +1,112 @@
+{% extends 'navigateur/base.html' %}
+{% load static %}
+
+{% block title %}Inscription{% endblock %}
+
+{% block pharmacie %}
+
+<div class="container my-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+
+      <!-- Logo -->
+      <div class="text-center mb-4">
+        <a href="#">
+          <img src="{% static 'assets/images/logo-dark.svg' %}" alt="Logo" style="max-width:150px;">
+        </a>
+      </div>
+
+      <!-- Card -->
+      <div class="card shadow-sm">
+        <div class="card-body p-4">
+
+          <h3 class="mb-4 text-center"><b>Créer un compte</b></h3>
+
+          <!-- Messages Django -->
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+
+          <!-- Formulaire -->
+          <form method="POST" novalidate>
+            {% csrf_token %}
+
+            <div class="mb-3">
+              <label class="form-label">Prénom *</label>
+              {{ form.first_name }}
+              {% for error in form.first_name.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Nom *</label>
+              {{ form.last_name }}
+              {% for error in form.last_name.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Email *</label>
+              {{ form.email }}
+              {% for error in form.email.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Téléphone *</label>
+              {{ form.telephone }}
+              {% for error in form.telephone.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Mot de passe *</label>
+              {{ form.password1 }}
+              {% for error in form.password1.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Confirmer le mot de passe *</label>
+              {{ form.password2 }}
+              {% for error in form.password2.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <p class="text-muted small mt-3">
+              En créant un compte, vous acceptez nos 
+              <a href="#" class="text-primary">conditions d’utilisation</a> et 
+              <a href="#" class="text-primary">politique de confidentialité</a>.
+            </p>
+
+            <div class="d-grid mt-3">
+              <button type="submit" class="btn btn-primary">Créer mon compte</button>
+            </div>
+
+            <p class="text-center text-muted small mt-2">
+              Vous avez déjà un compte ? <a href="{% url 'gestion_compte:connexion' %}" class="text-primary">Se connecter</a>
+            </p>
+
+          </form>
+
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="text-center mt-4">
+        <p class="m-0">© {{ now|date:"Y" }} – Tous droits réservés</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}

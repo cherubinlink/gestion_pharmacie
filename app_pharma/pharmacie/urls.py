@@ -24,6 +24,8 @@ urlpatterns = [
     
     # application
     path('',include('gestion_compte.urls')),
+    path('api/', include('gestion_compte.api_urls')),
+    path('api-auth/', include('rest_framework.urls')),
 ]
 
 if settings.DEBUG:

@@ -1,108 +1,111 @@
 {% extends 'navigateur/base.html' %}
-
 {% load static %}
 
-{% block title %}Register{% endblock %}
-
+{% block title %}Inscription{% endblock %}
 
 {% block pharmacie %}
- <!-- [ Pre-loader ] start -->
-  <div class="loader-bg">
-    <div class="loader-track">
-      <div class="loader-fill"></div>
-    </div>
-  </div>
-  <!-- [ Pre-loader ] End -->
 
-  <div class="auth-main">
-    <div class="auth-wrapper v3">
-      <div class="auth-form">
-        <div class="auth-header">
-          <a href="#"><img src="../assets/images/logo-dark.svg" alt="img"></a>
-        </div>
-        <div class="card my-5">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-end mb-4">
-              <h3 class="mb-0"><b>Sign up</b></h3>
-              <a href="#" class="link-primary">Already have an account?</a>
-            </div>
-            <div class="row">
-              <div class="col-md-6">
-                <div class="form-group mb-3">
-                  <label class="form-label">First Name*</label>
-                  <input type="text" class="form-control" placeholder="First Name">
-                </div>
-              </div>
-              <div class="col-md-6">
-                <div class="form-group mb-3">
-                  <label class="form-label">Last Name</label>
-                  <input type="text" class="form-control" placeholder="Last Name">
-                </div>
-              </div>
-            </div>
-            <div class="form-group mb-3">
-              <label class="form-label">Company</label>
-              <input type="text" class="form-control" placeholder="Company">
-            </div>
-            <div class="form-group mb-3">
-              <label class="form-label">Email Address*</label>
-              <input type="email" class="form-control" placeholder="Email Address">
-            </div>
-            <div class="form-group mb-3">
-              <label class="form-label">Password</label>
-              <input type="password" class="form-control" placeholder="Password">
-            </div>
-            <p class="mt-4 text-sm text-muted">By Signing up, you agree to our <a href="#" class="text-primary"> Terms of Service </a> and <a href="#" class="text-primary"> Privacy Policy</a></p>
-            <div class="d-grid mt-3">
-              <button type="button" class="btn btn-primary">Create Account</button>
-            </div>
-            <div class="saprator mt-3">
-              <span>Sign up with</span>
-            </div>
-            <div class="row">
-              <div class="col-4">
-                <div class="d-grid">
-                  <button type="button" class="btn mt-2 btn-light-primary bg-light text-muted">
-                    <img src="../assets/images/authentication/google.svg" alt="img"> <span class="d-none d-sm-inline-block"> Google</span>
-                  </button>
-                </div>
-              </div>
-              <div class="col-4">
-                <div class="d-grid">
-                  <button type="button" class="btn mt-2 btn-light-primary bg-light text-muted">
-                    <img src="../assets/images/authentication/twitter.svg" alt="img"> <span class="d-none d-sm-inline-block"> Twitter</span>
-                  </button>
-                </div>
-              </div>
-              <div class="col-4">
-                <div class="d-grid">
-                  <button type="button" class="btn mt-2 btn-light-primary bg-light text-muted">
-                    <img src="../assets/images/authentication/facebook.svg" alt="img"> <span class="d-none d-sm-inline-block"> Facebook</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-            
+<div class="container my-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+
+      <!-- Logo -->
+      <div class="text-center mb-4">
+        <a href="#">
+          <img src="{% static 'assets/images/logo-dark.svg' %}" alt="Logo" style="max-width:150px;">
+        </a>
+      </div>
+
+      <!-- Card -->
+      <div class="card shadow-sm">
+        <div class="card-body p-4">
+
+          <div class="d-flex justify-content-between align-items-end mb-4">
+            <h3 class="mb-0"><b>Créer un compte</b></h3>
+            <a href="{% url 'gestion_compte:connexion' %}" class="link-primary">Déjà un compte ?</a>
           </div>
-        </div>
-        <div class="auth-footer row">
-          <!-- <div class=""> -->
-            <div class="col my-1">
-              <p class="m-0">Copyright © <a href="#">Codedthemes</a></p>
+
+          <!-- Messages Django -->
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+
+          <!-- FORMULAIRE -->
+          <form method="POST" novalidate>
+            {% csrf_token %}
+
+            <div class="mb-3">
+              <label class="form-label">Prénom *</label>
+              {{ form.first_name }}
+              {% for error in form.first_name.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
             </div>
-            <div class="col-auto my-1">
-              <ul class="list-inline footer-link mb-0">
-                <li class="list-inline-item"><a href="#">Home</a></li>
-                <li class="list-inline-item"><a href="#">Privacy Policy</a></li>
-                <li class="list-inline-item"><a href="#">Contact us</a></li>
-              </ul>
+
+            <div class="mb-3">
+              <label class="form-label">Nom *</label>
+              {{ form.last_name }}
+              {% for error in form.last_name.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
             </div>
-          <!-- </div> -->
+
+            <div class="mb-3">
+              <label class="form-label">Email *</label>
+              {{ form.email }}
+              {% for error in form.email.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Téléphone *</label>
+              {{ form.telephone }}
+              {% for error in form.telephone.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Mot de passe *</label>
+              {{ form.password1 }}
+              {% for error in form.password1.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Confirmer le mot de passe *</label>
+              {{ form.password2 }}
+              {% for error in form.password2.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <p class="text-muted small mt-3">
+              En créant un compte, vous acceptez nos 
+              <a href="#" class="text-primary">conditions d’utilisation</a> et 
+              <a href="#" class="text-primary">politique de confidentialité</a>.
+            </p>
+
+            <div class="d-grid mt-3">
+              <button type="submit" class="btn btn-primary">Créer mon compte</button>
+            </div>
+
+          </form>
+
         </div>
       </div>
+
+      <!-- Footer -->
+      <div class="text-center mt-4">
+        <p class="m-0">© {{ now|date:"Y" }} – Tous droits réservés</p>
+      </div>
+
     </div>
   </div>
-  <!-- [ Main Content ] end -->
+</div>
 
 {% endblock %}
-

@@ -12,32 +12,54 @@ urlpatterns = [
     path('connexion/', views.connexion_view, name='connexion'),
     path('deconnexion/', views.deconnexion_view, name='deconnexion'),
     
-    # Tableau de bord
-    path('tableau-bord/', views.tableau_bord_view, name='tableau_bord'),
     
+     # ==================== DASHBOARD ====================
+    path('', views.dashboard, name='dashboard'),
     
-     # Vue principale (lecture seule - Onglet 1)
-    path('parametres/', views.parametres_compte_view, name='parametres_compte'),
+    # ==================== PHARMACIE ====================
+    # Liste et création
+    path('pharmacies/', views.pharmacie_liste, name='pharmacie_liste'),
+    path('pharmacies/creer/', views.pharmacie_creer, name='pharmacie_creer'),
     
-    # Onglet 2: Profil personnel
-    path('parametres/profil/', views.modifier_profil_personnel_view, name='modifier_profil_personnel'),
+    # Détails et modification
+    path('pharmacies/<uuid:pharmacie_id>/', views.pharmacie_detail, name='pharmacie_detail'),
+    path('pharmacies/<uuid:pharmacie_id>/modifier/', views.pharmacie_modifier, name='pharmacie_modifier'),
     
-    # Onglet 3: Configuration pharmacie
-    path('parametres/pharmacie/', views.configuration_pharmacie_view, name='configuration_pharmacie'),
+    # Actions sur pharmacie
+    path('pharmacies/<uuid:pharmacie_id>/changer-statut/', views.pharmacie_changer_statut, name='pharmacie_changer_statut'),
+    path('pharmacies/<uuid:pharmacie_id>/selectionner/', views.pharmacie_selectionner, name='pharmacie_selectionner'),
     
-    # Onglet 4: Planning
-    path('parametres/planning/', views.planning_view, name='planning'),
+    # AJAX
+    path('pharmacies/<uuid:pharmacie_id>/completion/', views.pharmacie_completion_ajax, name='pharmacie_completion_ajax'),
     
-    # Onglet 5: Gestion membres
-    path('parametres/membres/', views.gestion_membres_view, name='gestion_membres'),
+    # ==================== UTILISATEURS ====================
+    # Liste et création
+    path('utilisateurs/', views.utilisateur_liste, name='utilisateur_liste'),
+    path('utilisateurs/creer/', views.utilisateur_creer, name='utilisateur_creer'),
     
-    # Onglet 6: Préférences
-    path('parametres/preferences/', views.preferences_view, name='preferences'),
+    # Détails et modification
+    path('utilisateurs/<uuid:utilisateur_id>/', views.utilisateur_detail, name='utilisateur_detail'),
+    path('utilisateurs/<uuid:utilisateur_id>/modifier/', views.utilisateur_modifier, name='utilisateur_modifier'),
     
-    # Actions complémentaires
-    path('parametres/changer-pharmacie/<uuid:pharmacie_id>/', views.changer_pharmacie_active_view, name='changer_pharmacie_active'),
-    path('parametres/retirer-membre/<uuid:membre_id>/', views.retirer_membre_view, name='retirer_membre'),
-   
+    # Actions sur utilisateur
+    path('utilisateurs/<uuid:utilisateur_id>/changer-statut/', views.utilisateur_changer_statut, name='utilisateur_changer_statut'),
+    path('utilisateurs/<uuid:utilisateur_id>/reinitialiser-tentatives/', views.utilisateur_reinitialiser_tentatives, name='utilisateur_reinitialiser_tentatives'),
+    
+    # AJAX
+    path('utilisateurs/stats/', views.utilisateur_stats_ajax, name='utilisateur_stats_ajax'),
+    
+    # ==================== PROFIL PERSONNEL ====================
+    path('mon-profil/', views.mon_profil, name='mon_profil'),
+    path('mon-profil/modifier/', views.mon_profil_modifier, name='mon_profil_modifier'),
+    
+    # ==================== PARAMÈTRES ====================
+    path('parametres/', views.parametres_compte, name='parametres_compte'),
+    
+  
+    
+
+     # parametre
+    path('parametre/',views.parametre_compte,name='parametre_compte'),
     
     # dashboard
     path('',views.dashboard,name='dashboard'),

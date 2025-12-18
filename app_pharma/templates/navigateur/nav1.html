@@ -133,7 +133,7 @@
         aria-expanded="false"
       >
         <img src="{% static 'assets/images/user/avatar-2.jpg' %}" alt="user-image" class="user-avtar">
-        <span>{{ request.user.get_full_name|default:request.user.email }}</span>
+        <span></span>
       </a>
       <div class="dropdown-menu dropdown-user-profile dropdown-menu-end pc-h-dropdown">
         <div class="dropdown-header">
@@ -142,7 +142,7 @@
               <img src="{% static 'assets/images/user/avatar-2.jpg' %}" alt="user-image" class="user-avtar wid-35">
             </div>
             <div class="flex-grow-1 ms-3">
-              <h6 class="mb-1">{{ request.user.get_full_name|default:request.user.email }}</h6>
+              <h6 class="mb-1"></h6>
               <span>UI/UX Designer</span>
             </div>
             <a href="#!" class="pc-head-link bg-transparent"><i class="ti ti-power text-danger"></i></a>

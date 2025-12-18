@@ -384,9 +384,9 @@ class PharmacieAdmin(admin.ModelAdmin):
         }
         color = colors.get(obj.statut, 'secondary')
         return format_html(
-            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            '<span style="background-color: var(--bs-{}); color: white; padding: 3px 10px; '
             'border-radius: 3px; font-weight: bold;">{}</span>',
-            f'var(--bs-{color})',
+            color,
             obj.get_statut_display()
         )
     statut_badge.short_description = "Statut"
@@ -400,13 +400,13 @@ class PharmacieAdmin(admin.ModelAdmin):
             color = '#ffc107'
         else:
             color = '#dc3545'
-        
+            
         return format_html(
             '<div style="width: 100px; background-color: #e9ecef; border-radius: 3px; overflow: hidden;">'
             '<div style="width: {}%; background-color: {}; color: white; text-align: center; '
-            'padding: 2px; font-size: 11px; font-weight: bold;">{:.0f}%</div>'
+            'padding: 2px; font-size: 11px; font-weight: bold;">{}%</div>'
             '</div>',
-            percentage, color, percentage
+            int(percentage), color, int(percentage)
         )
     completion_progress.short_description = "Complétion"
     

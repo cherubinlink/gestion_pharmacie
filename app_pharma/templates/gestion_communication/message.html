@@ -838,4 +838,21 @@
     </div>
   </div>
 
+
+   <!-- [Page Specific JS] start -->
+  <script>
+    // scroll-block
+    var tc = document.querySelectorAll('.scroll-block');
+    for (var t = 0; t < tc.length; t++) {
+      new SimpleBar(tc[t]);
+    }
+    setTimeout(function () {
+      var element = document.querySelector('.chat-content .scroll-block .simplebar-content-wrapper');
+      var elementheight = document.querySelector('.chat-content .scroll-block .simplebar-content');
+      var off = elementheight.getBoundingClientRect();
+      var h = off.height;
+      element.scrollTop += h;
+    }, 100)
+  </script>
+
 {% endblock %}

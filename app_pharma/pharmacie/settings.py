@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'gestion_compte.apps.GestionCompteConfig',
     'gestion_rh.apps.GestionRhConfig',
     'gestion_communication.apps.GestionCommunicationConfig',
+    'gestion_vente.apps.GestionVenteConfig',
 ]
 
 MIDDLEWARE = [

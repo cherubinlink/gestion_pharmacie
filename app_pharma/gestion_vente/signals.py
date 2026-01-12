@@ -14,7 +14,8 @@ from django.core.files import File
 from gestion_vente.models import (
     Product, Sale, SaleItem, Payment, ElectronicPrescription,
     ProductPerformance, CustomerPurchasePattern, ProductRecommendation,
-    FraudAlert, PurchaseAnomalyLog, SalesAnalytics
+    FraudAlert, PurchaseAnomalyLog, SalesAnalytics,CashRegister, CashTransaction, CashCount,
+    ChangeShortage, Sale,
 )
 
 
@@ -448,3 +449,258 @@ def calculate_product_performance(product, period_start, period_end):
             'recommended_quantity': recommended_quantity
         }
     )
+
+
+
+# ============================================================================
+# SIGNALS CAISSE ENREGISTREUSE
+# ============================================================================
+
+@receiver(post_save, sender=CashRegister)
+def initialize_cash_register_balance(sender, instance, created, **kwargs):
+    """Initialise le solde de la caisse lors de l'ouverture"""
+    if created and instance.is_open:
+        instance.current_balance = instance.opening_balance
+        instance.expected_balance = instance.opening_balance
+        CashRegister.objects.filter(pk=instance.pk).update(
+            current_balance=instance.opening_balance,
+            expected_balance=instance.opening_balance
+        )
+
+
+# ============================================================================
+# SIGNALS TRANSACTIONS DE CAISSE
+# ============================================================================
+
+@receiver(post_save, sender=Payment)
+def create_cash_transaction_from_payment(sender, instance, created, **kwargs):
+    """Crée automatiquement une transaction de caisse pour les paiements en espèces"""
+    if created and instance.payment_method == 'cash' and instance.status == 'completed':
+        # Trouver la caisse ouverte du caissier (ou créer une transaction sans caisse)
+        cash_register = CashRegister.objects.filter(
+            cashier=instance.processed_by,
+            is_open=True
+        ).first()
+        
+        if cash_register:
+            # Créer la transaction de caisse
+            CashTransaction.objects.create(
+                cash_register=cash_register,
+                sale=instance.sale,
+                transaction_type='sale',
+                amount_due=instance.amount,
+                amount_tendered=instance.amount,  # Par défaut, montant exact
+                payment_method='cash',
+                processed_by=instance.processed_by,
+                transaction_date=instance.payment_date
+            )
+
+
+@receiver(post_save, sender=CashTransaction)
+def check_change_availability(sender, instance, created, **kwargs):
+    """Vérifie la disponibilité de la monnaie et crée des alertes si nécessaire"""
+    if created and instance.change_amount > 0:
+        # Vérifier si on a assez de monnaie pour chaque dénomination
+        for denomination, quantity in instance.change_breakdown.items():
+            if quantity > 0:
+                # Ici vous pourriez implémenter une logique pour vérifier
+                # le stock de monnaie réel dans la caisse
+                # Pour l'instant, on crée juste un log si la quantité est importante
+                
+                denom_value = int(denomination)
+                if quantity >= 5 and denom_value <= 1000:
+                    # Alerte si on doit rendre beaucoup de petites coupures
+                    ChangeShortage.objects.create(
+                        cash_register=instance.cash_register,
+                        denomination=denomination,
+                        quantity_needed=quantity,
+                        quantity_available=0,  # À mettre à jour avec le stock réel
+                        shortage_amount=Decimal(str(denom_value * quantity)),
+                        reported_by=instance.processed_by
+                    )
+
+
+@receiver(post_save, sender=CashTransaction)
+def update_sale_payment_details(sender, instance, created, **kwargs):
+    """Met à jour les détails de paiement de la vente"""
+    if created and instance.sale:
+        # Ajouter les détails de la transaction dans les métadonnées du paiement
+        payments = instance.sale.payments.filter(payment_method='cash', status='completed')
+        for payment in payments:
+            payment.payment_details.update({
+                'amount_tendered': str(instance.amount_tendered),
+                'change_given': str(instance.change_amount),
+                'change_breakdown': instance.change_breakdown
+            })
+            payment.save(update_fields=['payment_details'])
+
+
+# ============================================================================
+# SIGNALS COMPTAGE DE CAISSE
+# ============================================================================
+
+@receiver(post_save, sender=CashCount)
+def update_cash_register_on_count(sender, instance, created, **kwargs):
+    """Met à jour le solde de la caisse après un comptage"""
+    if created:
+        cash_register = instance.cash_register
+        
+        if instance.count_type == 'opening':
+            # Comptage d'ouverture
+            cash_register.opening_balance = instance.total_counted
+            cash_register.current_balance = instance.total_counted
+            cash_register.expected_balance = instance.total_counted
+            
+        elif instance.count_type == 'closing':
+            # Comptage de fermeture
+            cash_register.current_balance = instance.total_counted
+            
+            # Si écart important, créer une notification
+            if abs(instance.discrepancy) > 1000:  # Écart > 1000 FCFA
+                from gestion_communication.models import Notification
+                
+                severity = 'high' if abs(instance.discrepancy) > 5000 else 'normal'
+                
+                # Notifier le responsable
+                if cash_register.cashier:
+                    Notification.objects.create(
+                        recipient=cash_register.cashier,
+                        notification_type='system',
+                        priority=severity,
+                        title=f'⚠️ Écart de caisse détecté',
+                        message=f'Écart de {instance.discrepancy:,.0f} FCFA lors de la fermeture de la caisse {cash_register.register_number}.',
+                        send_in_app=True,
+                        send_email=True,
+                        data={
+                            'cash_register_id': str(cash_register.id),
+                            'discrepancy': str(instance.discrepancy),
+                            'count_id': str(instance.id)
+                        }
+                    )
+        
+        cash_register.save()
+
+
+@receiver(post_save, sender=CashCount)
+def alert_on_significant_discrepancy(sender, instance, created, **kwargs):
+    """Crée une alerte si l'écart est significatif"""
+    if created and abs(instance.discrepancy) > 5000:  # Écart > 5000 FCFA
+        from gestion_communication.models import Notification
+        
+        # Notifier les superviseurs/managers
+        # (À adapter selon votre modèle de rôles)
+        supervisors = instance.cash_register.pharmacie.employees.filter(
+            role__name__in=['Manager', 'Superviseur', 'Gérant']
+        )
+        
+        for supervisor in supervisors:
+            Notification.objects.create(
+                recipient=supervisor,
+                notification_type='system',
+                priority='urgent',
+                title='🚨 Écart de caisse important',
+                message=f'Écart de {instance.discrepancy:,.0f} FCFA détecté lors du comptage de la caisse {instance.cash_register.register_number}.',
+                send_in_app=True,
+                send_email=True,
+                data={
+                    'cash_register_id': str(instance.cash_register.id),
+                    'discrepancy': str(instance.discrepancy),
+                    'count_type': instance.count_type,
+                    'counted_by': instance.counted_by.get_full_name() if instance.counted_by else 'N/A'
+                }
+            )
+
+
+# ============================================================================
+# SIGNALS MANQUE DE MONNAIE
+# ============================================================================
+
+@receiver(post_save, sender=ChangeShortage)
+def notify_change_shortage(sender, instance, created, **kwargs):
+    """Notifie les responsables en cas de manque de monnaie"""
+    if created and not instance.is_resolved:
+        from gestion_communication.models import Notification
+        
+        # Notifier le caissier et les superviseurs
+        recipients = [instance.cash_register.cashier]
+        
+        # Ajouter les superviseurs
+        supervisors = instance.cash_register.pharmacie.employees.filter(
+            role__name__in=['Manager', 'Superviseur', 'Gérant']
+        )
+        recipients.extend(supervisors)
+        
+        for recipient in recipients:
+            if recipient:
+                Notification.objects.create(
+                    recipient=recipient,
+                    notification_type='system',
+                    priority='normal',
+                    title=f'💰 Manque de monnaie',
+                    message=f'Manque de {instance.quantity_needed - instance.quantity_available} billet(s)/pièce(s) de {instance.denomination} FCFA à la caisse {instance.cash_register.register_number}.',
+                    send_in_app=True,
+                    data={
+                        'cash_register_id': str(instance.cash_register.id),
+                        'denomination': instance.denomination,
+                        'quantity_needed': instance.quantity_needed
+                    }
+                )
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def get_suggested_tender_amount(amount_due):
+    """
+    Suggère un montant à verser pour faciliter la monnaie à rendre
+    Arrondit au montant supérieur le plus proche qui simplifie la monnaie
+    """
+    # Dénominations courantes pour arrondir
+    round_to = [10000, 5000, 2000, 1000, 500]
+    
+    for denom in round_to:
+        if amount_due <= denom:
+            return Decimal(str(denom))
+        elif amount_due % denom < denom / 2:
+            # Arrondir au multiple inférieur
+            return Decimal(str((amount_due // denom) * denom + denom))
+    
+    # Si montant très élevé, arrondir au millier supérieur
+    return Decimal(str(((amount_due // 1000) + 1) * 1000))
+
+
+def calculate_optimal_change(change_amount, available_denominations):
+    """
+    Calcule la combinaison optimale de billets/pièces pour rendre la monnaie
+    en fonction des dénominations disponibles
+    
+    Args:
+        change_amount: Montant à rendre
+        available_denominations: Dict {denomination: quantity_available}
+    
+    Returns:
+        Dict {denomination: quantity_to_give} ou None si impossible
+    """
+    result = {}
+    remaining = float(change_amount)
+    
+    # Trier par dénomination décroissante
+    sorted_denoms = sorted(
+        [(int(d), q) for d, q in available_denominations.items()],
+        reverse=True
+    )
+    
+    for denom_value, qty_available in sorted_denoms:
+        if remaining >= denom_value and qty_available > 0:
+            qty_needed = min(int(remaining // denom_value), qty_available)
+            if qty_needed > 0:
+                result[str(denom_value)] = qty_needed
+                remaining -= qty_needed * denom_value
+                remaining = round(remaining, 2)
+    
+    # Vérifier si on a pu tout rendre
+    if remaining > 0.01:  # Tolérance pour erreurs de virgule flottante
+        return None  # Impossible de rendre la monnaie exacte
+    
+    return result

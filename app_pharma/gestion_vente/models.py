@@ -1635,3 +1635,523 @@ class PurchaseAnomalyLog(models.Model):
     
     def __str__(self):
         return f"Anomalie {self.anomaly_type} - {self.customer.get_full_name()}"
+
+# ============================================================================
+# MODÈLE CALCULATRICE DE CAISSE
+# ============================================================================
+
+class CashRegister(models.Model):
+    """Caisse enregistreuse pour gérer les transactions en espèces"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pharmacie = models.ForeignKey(
+        Pharmacie,
+        on_delete=models.CASCADE,
+        related_name='cash_registers',
+        verbose_name="Pharmacie"
+    )
+    register_number = models.CharField(
+        max_length=50,
+        verbose_name="Numéro de caisse"
+    )
+    cashier = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='cash_register_sessions',
+        verbose_name="Caissier"
+    )
+    
+    # Fond de caisse
+    opening_balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        verbose_name="Fond de caisse d'ouverture"
+    )
+    current_balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Solde actuel"
+    )
+    expected_balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Solde attendu"
+    )
+    
+    # Statut de la session
+    is_open = models.BooleanField(
+        default=False,
+        verbose_name="Caisse ouverte"
+    )
+    opened_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Ouverte le"
+    )
+    closed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Fermée le"
+    )
+    
+    # Statistiques de la session
+    total_sales_count = models.IntegerField(
+        default=0,
+        verbose_name="Nombre de ventes"
+    )
+    total_cash_received = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Total espèces reçues"
+    )
+    total_change_given = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Total monnaie rendue"
+    )
+    
+    # Notes
+    opening_notes = models.TextField(
+        blank=True,
+        verbose_name="Notes d'ouverture"
+    )
+    closing_notes = models.TextField(
+        blank=True,
+        verbose_name="Notes de fermeture"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'sales_cash_registers'
+        ordering = ['-opened_at']
+        verbose_name = "Caisse enregistreuse"
+        verbose_name_plural = "Caisses enregistreuses"
+        indexes = [
+            models.Index(fields=['pharmacie', '-opened_at']),
+            models.Index(fields=['cashier', '-opened_at']),
+            models.Index(fields=['is_open']),
+        ]
+    
+    def __str__(self):
+        return f"Caisse {self.register_number} - {self.cashier.get_full_name() if self.cashier else 'N/A'}"
+    
+    def calculate_discrepancy(self):
+        """Calcule l'écart entre le solde attendu et le solde réel"""
+        return self.current_balance - self.expected_balance
+
+
+class CashTransaction(models.Model):
+    """Transaction de caisse avec calcul automatique de la monnaie"""
+    TRANSACTION_TYPE_CHOICES = [
+        ('sale', 'Vente'),
+        ('refund', 'Remboursement'),
+        ('cash_in', 'Entrée de fonds'),
+        ('cash_out', 'Sortie de fonds'),
+        ('opening', 'Ouverture de caisse'),
+        ('closing', 'Fermeture de caisse'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cash_register = models.ForeignKey(
+        CashRegister,
+        on_delete=models.CASCADE,
+        related_name='transactions',
+        verbose_name="Caisse"
+    )
+    sale = models.ForeignKey(
+        'Sale',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cash_transactions',
+        verbose_name="Vente"
+    )
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TRANSACTION_TYPE_CHOICES,
+        verbose_name="Type de transaction"
+    )
+    
+    # Montants de la transaction
+    amount_due = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Montant dû (prix total)",
+        verbose_name="Montant à payer"
+    )
+    amount_tendered = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Montant remis par le client",
+        verbose_name="Somme versée"
+    )
+    change_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Monnaie à rendre (calculé automatiquement)",
+        verbose_name="Monnaie à rendre"
+    )
+    
+    # Détail de la monnaie rendue (billets et pièces)
+    change_breakdown = models.JSONField(
+        default=dict,
+        help_text="Détail des billets et pièces pour la monnaie",
+        verbose_name="Détail de la monnaie"
+    )
+    
+    # Informations de paiement
+    payment_method = models.CharField(
+        max_length=20,
+        default='cash',
+        help_text="Méthode de paiement (cash par défaut)",
+        verbose_name="Méthode de paiement"
+    )
+    
+    # Référence
+    reference_number = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Numéro de référence"
+    )
+    
+    # Traçabilité
+    processed_by = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='cash_transactions_processed',
+        verbose_name="Traité par"
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        verbose_name="Notes"
+    )
+    
+    transaction_date = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="Date de transaction"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'sales_cash_transactions'
+        ordering = ['-transaction_date']
+        verbose_name = "Transaction de caisse"
+        verbose_name_plural = "Transactions de caisse"
+        indexes = [
+            models.Index(fields=['cash_register', '-transaction_date']),
+            models.Index(fields=['sale']),
+            models.Index(fields=['transaction_type', '-transaction_date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_transaction_type_display()} - {self.amount_due} XAF"
+    
+    def calculate_change(self):
+        """Calcule la monnaie à rendre"""
+        if self.amount_tendered >= self.amount_due:
+            return self.amount_tendered - self.amount_due
+        return Decimal('0.00')
+    
+    def get_change_breakdown(self):
+        """
+        Calcule le détail de la monnaie à rendre en billets et pièces
+        Utilise l'algorithme glouton pour minimiser le nombre de billets/pièces
+        """
+        change = float(self.change_amount)
+        
+        # Dénominations disponibles en XAF (Franc CFA)
+        denominations = [
+            ('10000', 10000),    # Billet de 10 000 FCFA
+            ('5000', 5000),      # Billet de 5 000 FCFA
+            ('2000', 2000),      # Billet de 2 000 FCFA
+            ('1000', 1000),      # Billet de 1 000 FCFA
+            ('500', 500),        # Pièce de 500 FCFA
+            ('250', 250),        # Pièce de 250 FCFA
+            ('200', 200),        # Pièce de 200 FCFA
+            ('100', 100),        # Pièce de 100 FCFA
+            ('50', 50),          # Pièce de 50 FCFA
+            ('25', 25),          # Pièce de 25 FCFA
+            ('10', 10),          # Pièce de 10 FCFA
+            ('5', 5),            # Pièce de 5 FCFA
+        ]
+        
+        breakdown = {}
+        remaining = change
+        
+        for denom_name, denom_value in denominations:
+            if remaining >= denom_value:
+                count = int(remaining // denom_value)
+                breakdown[denom_name] = count
+                remaining -= count * denom_value
+                remaining = round(remaining, 2)  # Éviter les erreurs de virgule flottante
+        
+        return breakdown
+    
+    def save(self, *args, **kwargs):
+        """Calcul automatique de la monnaie avant sauvegarde"""
+        # Calculer la monnaie à rendre
+        self.change_amount = self.calculate_change()
+        
+        # Calculer le détail des billets/pièces
+        if self.change_amount > 0:
+            self.change_breakdown = self.get_change_breakdown()
+        
+        super().save(*args, **kwargs)
+        
+        # Mettre à jour le solde de la caisse
+        if self.transaction_type == 'sale':
+            self.cash_register.current_balance += self.amount_tendered
+            self.cash_register.expected_balance += self.amount_due
+            self.cash_register.total_cash_received += self.amount_tendered
+            self.cash_register.total_change_given += self.change_amount
+            self.cash_register.total_sales_count += 1
+            self.cash_register.save()
+
+
+class CashCount(models.Model):
+    """Comptage de la caisse (ouverture/fermeture)"""
+    COUNT_TYPE_CHOICES = [
+        ('opening', 'Comptage d\'ouverture'),
+        ('closing', 'Comptage de fermeture'),
+        ('intermediate', 'Comptage intermédiaire'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cash_register = models.ForeignKey(
+        CashRegister,
+        on_delete=models.CASCADE,
+        related_name='cash_counts',
+        verbose_name="Caisse"
+    )
+    count_type = models.CharField(
+        max_length=20,
+        choices=COUNT_TYPE_CHOICES,
+        verbose_name="Type de comptage"
+    )
+    
+    # Détail du comptage (billets et pièces)
+    bill_10000 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Billets de 10 000"
+    )
+    bill_5000 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Billets de 5 000"
+    )
+    bill_2000 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Billets de 2 000"
+    )
+    bill_1000 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Billets de 1 000"
+    )
+    coin_500 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 500"
+    )
+    coin_250 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 250"
+    )
+    coin_200 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 200"
+    )
+    coin_100 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 100"
+    )
+    coin_50 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 50"
+    )
+    coin_25 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 25"
+    )
+    coin_10 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 10"
+    )
+    coin_5 = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Pièces de 5"
+    )
+    
+    # Total calculé
+    total_counted = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Total compté"
+    )
+    expected_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Montant attendu"
+    )
+    discrepancy = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Écart entre le montant compté et le montant attendu",
+        verbose_name="Écart"
+    )
+    
+    # Validation
+    counted_by = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='cash_counts_performed',
+        verbose_name="Compté par"
+    )
+    verified_by = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cash_counts_verified',
+        verbose_name="Vérifié par"
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        verbose_name="Notes"
+    )
+    
+    count_date = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="Date du comptage"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'sales_cash_counts'
+        ordering = ['-count_date']
+        verbose_name = "Comptage de caisse"
+        verbose_name_plural = "Comptages de caisse"
+        indexes = [
+            models.Index(fields=['cash_register', '-count_date']),
+            models.Index(fields=['count_type', '-count_date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_count_type_display()} - {self.total_counted} XAF"
+    
+    def calculate_total(self):
+        """Calcule le total compté"""
+        total = Decimal('0.00')
+        total += Decimal(str(self.bill_10000 * 10000))
+        total += Decimal(str(self.bill_5000 * 5000))
+        total += Decimal(str(self.bill_2000 * 2000))
+        total += Decimal(str(self.bill_1000 * 1000))
+        total += Decimal(str(self.coin_500 * 500))
+        total += Decimal(str(self.coin_250 * 250))
+        total += Decimal(str(self.coin_200 * 200))
+        total += Decimal(str(self.coin_100 * 100))
+        total += Decimal(str(self.coin_50 * 50))
+        total += Decimal(str(self.coin_25 * 25))
+        total += Decimal(str(self.coin_10 * 10))
+        total += Decimal(str(self.coin_5 * 5))
+        return total
+    
+    def save(self, *args, **kwargs):
+        """Calcul automatique du total avant sauvegarde"""
+        self.total_counted = self.calculate_total()
+        self.discrepancy = self.total_counted - self.expected_amount
+        super().save(*args, **kwargs)
+
+
+class ChangeShortage(models.Model):
+    """Journal des manques de monnaie"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cash_register = models.ForeignKey(
+        CashRegister,
+        on_delete=models.CASCADE,
+        related_name='change_shortages',
+        verbose_name="Caisse"
+    )
+    denomination = models.CharField(
+        max_length=20,
+        help_text="Dénomination manquante (ex: 500, 1000)",
+        verbose_name="Dénomination"
+    )
+    quantity_needed = models.IntegerField(
+        validators=[MinValueValidator(1)],
+        verbose_name="Quantité nécessaire"
+    )
+    quantity_available = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Quantité disponible"
+    )
+    shortage_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Montant du manque"
+    )
+    is_resolved = models.BooleanField(
+        default=False,
+        verbose_name="Résolu"
+    )
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Résolu le"
+    )
+    notes = models.TextField(
+        blank=True,
+        verbose_name="Notes"
+    )
+    reported_by = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='change_shortages_reported',
+        verbose_name="Signalé par"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'sales_change_shortages'
+        ordering = ['-created_at']
+        verbose_name = "Manque de monnaie"
+        verbose_name_plural = "Manques de monnaie"
+        indexes = [
+            models.Index(fields=['cash_register', 'is_resolved']),
+        ]
+    
+    def __str__(self):
+        return f"Manque de {self.denomination} FCFA x{self.quantity_needed - self.quantity_available}"
+

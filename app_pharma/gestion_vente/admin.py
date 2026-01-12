@@ -15,7 +15,7 @@ from gestion_vente.models import (
     Sale, SaleItem, Payment, PaymentInstallment,
     ElectronicPrescription, SalesAnalytics, ProductPerformance,
     CustomerPurchasePattern, ProductRecommendation,
-    FraudAlert, PurchaseAnomalyLog
+    FraudAlert, PurchaseAnomalyLog,CashRegister, CashTransaction, CashCount, ChangeShortage
 )
 
 # Register your models here.
@@ -881,5 +881,405 @@ class ProductRecommendationAdmin(admin.ModelAdmin):
     confidence_badge.short_description = "Confiance"
 
 
+
+# ============================================================================
+# INLINE ADMIN
+# ============================================================================
+
+class CashTransactionInline(admin.TabularInline):
+    """Inline pour les transactions de caisse"""
+    model = CashTransaction
+    extra = 0
+    fields = [
+        'transaction_type', 'amount_due', 'amount_tendered',
+        'change_amount', 'transaction_date'
+    ]
+    readonly_fields = ['change_amount', 'transaction_date']
+    can_delete = False
+
+
+class CashCountInline(admin.TabularInline):
+    """Inline pour les comptages de caisse"""
+    model = CashCount
+    extra = 0
+    fields = ['count_type', 'total_counted', 'expected_amount', 'discrepancy', 'count_date']
+    readonly_fields = ['total_counted', 'discrepancy', 'count_date']
+    can_delete = False
+
+
+# ============================================================================
+# ADMIN CAISSE ENREGISTREUSE
+# ============================================================================
+
+@admin.register(CashRegister)
+class CashRegisterAdmin(admin.ModelAdmin):
+    list_display = [
+        'register_number', 'cashier_name', 'pharmacie',
+        'status_badge', 'current_balance_display', 'discrepancy_badge',
+        'sales_count', 'opened_at'
+    ]
+    list_filter = ['is_open', 'pharmacie', 'opened_at']
+    search_fields = [
+        'register_number', 'cashier__first_name',
+        'cashier__last_name'
+    ]
+    readonly_fields = [
+        'current_balance', 'expected_balance', 'total_sales_count',
+        'total_cash_received', 'total_change_given', 'created_at', 'updated_at'
+    ]
+    date_hierarchy = 'opened_at'
+    inlines = [CashTransactionInline, CashCountInline]
+    
+    fieldsets = (
+        ('Caisse', {
+            'fields': ('pharmacie', 'register_number', 'cashier')
+        }),
+        ('Fond de caisse', {
+            'fields': (
+                'opening_balance', 'current_balance', 'expected_balance'
+            )
+        }),
+        ('Session', {
+            'fields': ('is_open', 'opened_at', 'closed_at')
+        }),
+        ('Statistiques', {
+            'fields': (
+                'total_sales_count', 'total_cash_received', 'total_change_given'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Notes', {
+            'fields': ('opening_notes', 'closing_notes'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def cashier_name(self, obj):
+        return obj.cashier.get_full_name() if obj.cashier else "-"
+    cashier_name.short_description = "Caissier"
+    
+    def status_badge(self, obj):
+        if obj.is_open:
+            duration = timezone.now() - obj.opened_at if obj.opened_at else None
+            hours = duration.total_seconds() / 3600 if duration else 0
+            return format_html(
+                '<span style="background: #28a745; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">🟢 Ouverte ({:.1f}h)</span>',
+                hours
+            )
+        return format_html(
+            '<span style="background: #dc3545; color: white; padding: 3px 10px; border-radius: 3px;">🔴 Fermée</span>'
+        )
+    status_badge.short_description = "Statut"
+    
+    def current_balance_display(self, obj):
+        return format_html(
+            '<strong style="font-size: 14px; color: green;">{:,.0f} XAF</strong>',
+            obj.current_balance
+        )
+    current_balance_display.short_description = "Solde actuel"
+    current_balance_display.admin_order_field = 'current_balance'
+    
+    def discrepancy_badge(self, obj):
+        discrepancy = obj.calculate_discrepancy()
+        if discrepancy == 0:
+            return format_html('<span style="color: green;">✓ OK</span>')
+        elif discrepancy > 0:
+            return format_html(
+                '<span style="color: orange;">📈 +{:,.0f} XAF</span>',
+                abs(discrepancy)
+            )
+        else:
+            return format_html(
+                '<span style="color: red;">📉 -{:,.0f} XAF</span>',
+                abs(discrepancy)
+            )
+    discrepancy_badge.short_description = "Écart"
+    
+    def sales_count(self, obj):
+        return format_html('<strong>{}</strong> vente(s)', obj.total_sales_count)
+    sales_count.short_description = "Ventes"
+    
+    actions = ['open_register', 'close_register']
+    
+    def open_register(self, request, queryset):
+        updated = queryset.filter(is_open=False).update(
+            is_open=True,
+            opened_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} caisse(s) ouverte(s).')
+    open_register.short_description = "🟢 Ouvrir les caisses"
+    
+    def close_register(self, request, queryset):
+        updated = queryset.filter(is_open=True).update(
+            is_open=False,
+            closed_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} caisse(s) fermée(s).')
+    close_register.short_description = "🔴 Fermer les caisses"
+
+
+# ============================================================================
+# ADMIN TRANSACTIONS DE CAISSE
+# ============================================================================
+
+@admin.register(CashTransaction)
+class CashTransactionAdmin(admin.ModelAdmin):
+    list_display = [
+        'transaction_type_badge', 'amount_due_display',
+        'amount_tendered_display', 'change_display',
+        'cashier_name', 'transaction_date'
+    ]
+    list_filter = ['transaction_type', 'cash_register', 'transaction_date']
+    search_fields = [
+        'reference_number', 'processed_by__first_name',
+        'processed_by__last_name', 'sale__sale_number'
+    ]
+    readonly_fields = [
+        'change_amount', 'change_breakdown', 'transaction_date', 'created_at'
+    ]
+    date_hierarchy = 'transaction_date'
+    list_per_page = 100
+    
+    fieldsets = (
+        ('Transaction', {
+            'fields': (
+                'cash_register', 'sale', 'transaction_type', 'payment_method'
+            )
+        }),
+        ('Calculatrice de monnaie', {
+            'fields': (
+                'amount_due', 'amount_tendered', 'change_amount', 'change_breakdown'
+            ),
+            'description': 'La monnaie à rendre est calculée automatiquement'
+        }),
+        ('Référence', {
+            'fields': ('reference_number',)
+        }),
+        ('Traçabilité', {
+            'fields': ('processed_by', 'notes'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def transaction_type_badge(self, obj):
+        icons = {
+            'sale': '💰',
+            'refund': '↩️',
+            'cash_in': '📥',
+            'cash_out': '📤',
+            'opening': '🔓',
+            'closing': '🔒'
+        }
+        colors = {
+            'sale': '#28a745',
+            'refund': '#dc3545',
+            'cash_in': '#17a2b8',
+            'cash_out': '#fd7e14',
+            'opening': '#6610f2',
+            'closing': '#6c757d'
+        }
+        return format_html(
+            '<span style="background: {}; color: white; padding: 3px 8px; border-radius: 3px;">{} {}</span>',
+            colors.get(obj.transaction_type, '#6c757d'),
+            icons.get(obj.transaction_type, ''),
+            obj.get_transaction_type_display()
+        )
+    transaction_type_badge.short_description = "Type"
+    
+    def amount_due_display(self, obj):
+        return format_html(
+            '<strong style="color: #dc3545;">{:,.0f} XAF</strong>',
+            obj.amount_due
+        )
+    amount_due_display.short_description = "À payer"
+    
+    def amount_tendered_display(self, obj):
+        return format_html(
+            '<strong style="color: #17a2b8;">{:,.0f} XAF</strong>',
+            obj.amount_tendered
+        )
+    amount_tendered_display.short_description = "Versé"
+    
+    def change_display(self, obj):
+        if obj.change_amount > 0:
+            # Afficher le détail de la monnaie
+            breakdown_html = '<br>'.join([
+                f'<small>{count}x {denom} FCFA</small>'
+                for denom, count in obj.change_breakdown.items()
+            ])
+            return format_html(
+                '<strong style="color: #28a745; font-size: 14px;">{:,.0f} XAF</strong><br>{}',
+                obj.change_amount,
+                breakdown_html
+            )
+        return format_html('<span style="color: gray;">-</span>')
+    change_display.short_description = "Monnaie à rendre"
+    
+    def cashier_name(self, obj):
+        return obj.processed_by.get_full_name() if obj.processed_by else "-"
+    cashier_name.short_description = "Caissier"
+
+
+# ============================================================================
+# ADMIN COMPTAGE DE CAISSE
+# ============================================================================
+
+@admin.register(CashCount)
+class CashCountAdmin(admin.ModelAdmin):
+    list_display = [
+        'count_type_badge', 'cash_register', 'total_counted_display',
+        'expected_amount_display', 'discrepancy_badge',
+        'counted_by_name', 'count_date'
+    ]
+    list_filter = ['count_type', 'cash_register', 'count_date']
+    search_fields = [
+        'counted_by__first_name', 'counted_by__last_name',
+        'verified_by__first_name', 'verified_by__last_name'
+    ]
+    readonly_fields = ['total_counted', 'discrepancy', 'count_date', 'created_at']
+    date_hierarchy = 'count_date'
+    
+    fieldsets = (
+        ('Comptage', {
+            'fields': ('cash_register', 'count_type', 'expected_amount')
+        }),
+        ('Billets', {
+            'fields': ('bill_10000', 'bill_5000', 'bill_2000', 'bill_1000')
+        }),
+        ('Pièces', {
+            'fields': (
+                'coin_500', 'coin_250', 'coin_200', 'coin_100',
+                'coin_50', 'coin_25', 'coin_10', 'coin_5'
+            )
+        }),
+        ('Totaux', {
+            'fields': ('total_counted', 'discrepancy')
+        }),
+        ('Validation', {
+            'fields': ('counted_by', 'verified_by', 'notes'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def count_type_badge(self, obj):
+        colors = {
+            'opening': '#28a745',
+            'closing': '#dc3545',
+            'intermediate': '#ffc107'
+        }
+        icons = {
+            'opening': '🔓',
+            'closing': '🔒',
+            'intermediate': '🔍'
+        }
+        return format_html(
+            '<span style="background: {}; color: white; padding: 3px 8px; border-radius: 3px;">{} {}</span>',
+            colors.get(obj.count_type, '#6c757d'),
+            icons.get(obj.count_type, ''),
+            obj.get_count_type_display()
+        )
+    count_type_badge.short_description = "Type"
+    
+    def total_counted_display(self, obj):
+        return format_html(
+            '<strong style="font-size: 14px; color: green;">{:,.0f} XAF</strong>',
+            obj.total_counted
+        )
+    total_counted_display.short_description = "Total compté"
+    
+    def expected_amount_display(self, obj):
+        return format_html('{:,.0f} XAF', obj.expected_amount)
+    expected_amount_display.short_description = "Montant attendu"
+    
+    def discrepancy_badge(self, obj):
+        if abs(obj.discrepancy) < 100:  # Tolérance de 100 FCFA
+            return format_html('<span style="color: green; font-weight: bold;">✓ OK</span>')
+        elif obj.discrepancy > 0:
+            return format_html(
+                '<span style="background: #ffc107; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;">Surplus: {:,.0f} XAF</span>',
+                obj.discrepancy
+            )
+        else:
+            return format_html(
+                '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;">Manque: {:,.0f} XAF</span>',
+                abs(obj.discrepancy)
+            )
+    discrepancy_badge.short_description = "Écart"
+    
+    def counted_by_name(self, obj):
+        return obj.counted_by.get_full_name() if obj.counted_by else "-"
+    counted_by_name.short_description = "Compté par"
+
+
+# ============================================================================
+# ADMIN MANQUE DE MONNAIE
+# ============================================================================
+
+@admin.register(ChangeShortage)
+class ChangeShortageAdmin(admin.ModelAdmin):
+    list_display = [
+        'denomination_display', 'shortage_badge',
+        'cash_register', 'status_badge', 'reported_by_name', 'created_at'
+    ]
+    list_filter = ['is_resolved', 'cash_register', 'created_at']
+    search_fields = ['denomination', 'notes']
+    readonly_fields = ['created_at', 'resolved_at']
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        ('Manque', {
+            'fields': (
+                'cash_register', 'denomination',
+                'quantity_needed', 'quantity_available', 'shortage_amount'
+            )
+        }),
+        ('Statut', {
+            'fields': ('is_resolved', 'resolved_at', 'notes')
+        }),
+        ('Traçabilité', {
+            'fields': ('reported_by',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def denomination_display(self, obj):
+        return format_html(
+            '<strong style="font-size: 14px;">{} FCFA</strong>',
+            obj.denomination
+        )
+    denomination_display.short_description = "Dénomination"
+    
+    def shortage_badge(self, obj):
+        shortage = obj.quantity_needed - obj.quantity_available
+        return format_html(
+            '<span style="background: #fd7e14; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">⚠️ {} unité(s)</span>',
+            shortage
+        )
+    shortage_badge.short_description = "Manque"
+    
+    def status_badge(self, obj):
+        if obj.is_resolved:
+            return format_html(
+                '<span style="color: green; font-weight: bold;">✓ Résolu le {}</span>',
+                obj.resolved_at.strftime('%d/%m/%Y %H:%M') if obj.resolved_at else 'N/A'
+            )
+        return format_html(
+            '<span style="color: red; font-weight: bold;">⏳ En cours</span>'
+        )
+    status_badge.short_description = "Statut"
+    
+    def reported_by_name(self, obj):
+        return obj.reported_by.get_full_name() if obj.reported_by else "-"
+    reported_by_name.short_description = "Signalé par"
+    
+    actions = ['mark_as_resolved']
+    
+    def mark_as_resolved(self, request, queryset):
+        updated = queryset.filter(is_resolved=False).update(
+            is_resolved=True,
+            resolved_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} manque(s) de monnaie résolu(s).')
+    mark_as_resolved.short_description = "✓ Marquer comme résolu"
 
 

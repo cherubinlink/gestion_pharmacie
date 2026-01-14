@@ -29,6 +29,8 @@ urlpatterns = [
     path('',include('gestion_vente.urls')),
     path('',include('gestion_stock.urls')),
     path('',include('gestion_finance.urls')),
+    path('',include('gestion_suivit.urls')),
+    path('',include('ecommerce.urls')),
     path('api/', include('gestion_compte.api_urls')),
     path('api-auth/', include('rest_framework.urls')),
 ]

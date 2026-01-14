@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     'gestion_vente.apps.GestionVenteConfig',
     'gestion_stock.apps.GestionStockConfig',
     'gestion_finance.apps.GestionFinanceConfig',
+    'gestion_suivit.apps.GestionSuivitConfig',
+    'ecommerce.apps.EcommerceConfig',
 ]
 
 MIDDLEWARE = [

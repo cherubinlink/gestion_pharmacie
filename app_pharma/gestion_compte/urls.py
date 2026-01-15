@@ -7,10 +7,44 @@ app_name = 'gestion_compte'
 urlpatterns = [
     
     
-     # Authentification
+    # Authentification
+    # Inscription
     path('inscription/', views.inscription_view, name='inscription'),
+    path('inscription/ajax/', views.inscription_ajax_view, name='inscription_ajax'),
+    
+    # Vérifications disponibilité
+    path('verifier/email/', views.verifier_email_disponible, name='verifier_email'),
+    path('verifier/username/', views.verifier_username_disponible, name='verifier_username'),
+    
+    # Activation compte
+    path('activer/<str:token>/', views.activer_compte_view, name='activer_compte'),
+    
+    # Statistiques (admin)
+    path('stats/inscriptions/', views.statistiques_inscriptions_view, name='stats_inscriptions'),
+    
+        # 1. Connexion principale (GET/POST)
     path('connexion/', views.connexion_view, name='connexion'),
+    
+    # 2. Connexion AJAX (POST)
+    path('connexion/ajax/', views.connexion_ajax_view, name='connexion-ajax'),
+    
+    # 3. Statistiques connexions (GET, admin only)
+    path('admin/stats/connexions/', views.statistiques_connexions_view,  name='stats-connexions'),
+    
+    # ========== DÉCONNEXION (4 URLs) ==========
+    
+    # 1. Déconnexion principale
     path('deconnexion/', views.deconnexion_view, name='deconnexion'),
+    
+    # 2. Déconnexion AJAX
+    path('deconnexion/ajax/', views.deconnexion_ajax_view, name='deconnexion-ajax'),
+    
+    # 3. Déconnexion tous appareils
+    path('deconnexion/tous-appareils/', views.deconnexion_tous_appareils_view, name='deconnexion-tous-appareils'),
+    
+    # 4. Statistiques déconnexions (admin)
+    path('admin/stats/deconnexions/', views.statistiques_deconnexions_view, name='stats-deconnexions'),
+
     
     
      # ==================== DASHBOARD ====================

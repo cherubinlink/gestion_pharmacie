@@ -54,19 +54,16 @@ def send_temporary_password_email(user, password):
 
 @receiver(post_save, sender=Utilisateur)
 def handle_new_user_creation(sender, instance, created, **kwargs):
-    """
-    Génère et envoie un mot de passe temporaire lors de la création d'un utilisateur
-    """
-    if created and instance.is_temporary_password:
-        # Générer un mot de passe temporaire
-        temp_password = generate_temporary_password()
-        
-        # Hasher le mot de passe avant de le sauvegarder
-        instance.password = make_password(temp_password)
-        instance.save(update_fields=['password'])
-        
-        # Envoyer le mot de passe par email
-        send_temporary_password_email(instance, temp_password)
+    if not created:
+        return
+
+    temp_password = generate_temporary_password()
+
+    Utilisateur.objects.filter(pk=instance.pk).update(
+        password=make_password(temp_password)
+    )
+
+    send_temporary_password_email(instance, temp_password)
 
 
 @receiver(post_save, sender=Employee)

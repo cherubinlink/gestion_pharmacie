@@ -4,12 +4,20 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Count
 from django.utils import timezone
-from django.http import JsonResponse
+from django.http import JsonResponse,HttpResponseForbidden
 from django.contrib.auth.forms import PasswordChangeForm
-from django.http import HttpResponseForbidden
 from django.views.decorators.http import require_http_methods
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from django.db import transaction
+from django.conf import settings
+from django.db.models.functions import TruncDate
+import logging
+import re
 import json
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
 from gestion_compte.models import (
     Utilisateur,UtilisateurManager,Pharmacie,ProfilUtilisateur,
     Role, PermissionSysteme, RolePermission, MembrePharmacie,
@@ -21,80 +29,1427 @@ from gestion_compte.forms import (
 ) 
 from django.core.paginator import Paginator
 
+logger = logging.getLogger(__name__)
+
 # Create your views here.
-# ==========inscription ==========
+
+
+# ============================================================================
+# VUE D'INSCRIPTION PRINCIPALE
+# ============================================================================
+
+@never_cache
+@require_http_methods(["GET", "POST"])
 def inscription_view(request):
-    """Vue d'inscription"""
+    """
+    Vue d'inscription complète avec validation et sécurité
+    
+    Fonctionnalités:
+    - Validation des données
+    - Vérification force mot de passe
+    - Détection doublon email/username
+    - Envoi email de bienvenue
+    - Logging des inscriptions
+    - Protection CSRF
+    - Gestion erreurs
+    """
+    
+    # Redirection si déjà connecté
     if request.user.is_authenticated:
+        messages.info(request, 'Vous êtes déjà connecté.')
         return redirect('gestion_compte:dashboard')
     
     if request.method == 'POST':
-        form = InscriptionForm(request.POST)
+        form = InscriptionForm(request.POST, request.FILES)
+        
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            messages.success(request, 'Compte créé avec succès ! Bienvenue.')
-            return redirect('gestion_compte:parametre_compte')
+            try:
+                # Création utilisateur avec transaction atomique
+                with transaction.atomic():
+                    # Créer l'utilisateur
+                    user = form.save(commit=False)
+                    
+                    # Générer username si vide
+                    if not user.username:
+                        user.username = generer_username(
+                            user.first_name, 
+                            user.last_name, 
+                            user.email
+                        )
+                    
+                    # Définir statut initial
+                    user.statut = 'actif'
+                    user.is_active = True
+                    
+                    # Enregistrer IP de création
+                    user.ip_derniere_connexion = obtenir_ip_client(request)
+                    
+                    # Sauvegarder
+                    user.save()
+                    
+                    # Logger l'inscription
+                    logger.info(
+                        f"Nouvelle inscription: {user.email} "
+                        f"(ID: {user.id}) depuis IP {user.ip_derniere_connexion}"
+                    )
+                    
+                    # Envoyer email de bienvenue (asynchrone si possible)
+                    try:
+                        envoyer_email_bienvenue(user)
+                    except Exception as e:
+                        logger.error(f"Erreur envoi email bienvenue: {e}")
+                        # Ne pas bloquer l'inscription si email échoue
+                    
+                    # Connexion automatique
+                    login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+                    
+                    # Mettre à jour dernière connexion
+                    user.date_derniere_connexion = timezone.now()
+                    user.save(update_fields=['date_derniere_connexion'])
+                    
+                    # Message de succès
+                    messages.success(
+                        request,
+                        f'Bienvenue {user.get_full_name()} ! Votre compte a été créé avec succès.'
+                    )
+                    
+                    # Redirection selon le type de compte
+                    if user.is_superuser:
+                        return redirect('admin:index')
+                    else:
+                        return redirect('gestion_compte:parametre_compte')
+            
+            except Exception as e:
+                logger.error(f"Erreur lors de l'inscription: {e}", exc_info=True)
+                messages.error(
+                    request,
+                    "Une erreur s'est produite lors de la création de votre compte. "
+                    "Veuillez réessayer."
+                )
+        
+        else:
+            # Afficher les erreurs de validation
+            for field, errors in form.errors.items():
+                for error in errors:
+                    if field == '__all__':
+                        messages.error(request, error)
+                    else:
+                        messages.error(request, f"{field}: {error}")
+    
     else:
         form = InscriptionForm()
     
-    context = {
-        'form': form
+    # Statistiques pour la page (optionnel)
+    stats = {
+        'total_utilisateurs': Utilisateur.objects.filter(is_active=True).count(),
+        'inscriptions_mois': Utilisateur.objects.filter(
+            date_creation__month=timezone.now().month,
+            date_creation__year=timezone.now().year
+        ).count(),
     }
+    
+    context = {
+        'form': form,
+        'stats': stats,
+        'page_title': 'Créer un compte',
+        'show_captcha': getattr(settings, 'ENABLE_CAPTCHA', False),
+    }
+    
     return render(request, 'gestion_compte/inscription.html', context)
 
 
-# connexion
-def connexion_view(request):
-    """Vue de connexion"""
+# ============================================================================
+# VUE INSCRIPTION AJAX (Pour formulaires dynamiques)
+# ============================================================================
+
+@never_cache
+@require_http_methods(["POST"])
+def inscription_ajax_view(request):
+    """
+    Version AJAX de l'inscription pour les formulaires dynamiques
+    Retourne JSON pour intégration frontend moderne
+    """
+    
     if request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'error': 'Vous êtes déjà connecté.'
+        }, status=400)
+    
+    try:
+        form = InscriptionForm(request.POST, request.FILES)
+        
+        if form.is_valid():
+            with transaction.atomic():
+                user = form.save(commit=False)
+                
+                if not user.username:
+                    user.username = generer_username(
+                        user.first_name,
+                        user.last_name,
+                        user.email
+                    )
+                
+                user.statut = 'actif'
+                user.is_active = True
+                user.ip_derniere_connexion = obtenir_ip_client(request)
+                user.save()
+                
+                logger.info(f"Inscription AJAX: {user.email} (ID: {user.id})")
+                
+                # Envoyer email
+                try:
+                    envoyer_email_bienvenue(user)
+                except Exception as e:
+                    logger.error(f"Erreur email: {e}")
+                
+                # Connexion
+                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+                user.date_derniere_connexion = timezone.now()
+                user.save(update_fields=['date_derniere_connexion'])
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Compte créé avec succès !',
+                    'user': {
+                        'id': str(user.id),
+                        'email': user.email,
+                        'full_name': user.get_full_name(),
+                        'username': user.username,
+                    },
+                    'redirect_url': '/compte/parametres/'
+                })
+        
+        else:
+            errors = {}
+            for field, error_list in form.errors.items():
+                errors[field] = [str(e) for e in error_list]
+            
+            return JsonResponse({
+                'success': False,
+                'errors': errors
+            }, status=400)
+    
+    except Exception as e:
+        logger.error(f"Erreur inscription AJAX: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': 'Une erreur inattendue s\'est produite.'
+        }, status=500)
+
+
+# ============================================================================
+# VÉRIFICATION DISPONIBILITÉ EMAIL/USERNAME
+# ============================================================================
+
+@never_cache
+@require_http_methods(["GET"])
+def verifier_email_disponible(request):
+    """
+    API pour vérifier si un email est disponible
+    Utilisé pour validation en temps réel côté client
+    """
+    email = request.GET.get('email', '').strip().lower()
+    
+    if not email:
+        return JsonResponse({
+            'disponible': False,
+            'message': 'Email requis'
+        })
+    
+    # Validation format email
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_regex, email):
+        return JsonResponse({
+            'disponible': False,
+            'message': 'Format email invalide'
+        })
+    
+    # Vérifier si existe
+    existe = Utilisateur.objects.filter(email__iexact=email).exists()
+    
+    return JsonResponse({
+        'disponible': not existe,
+        'message': 'Email déjà utilisé' if existe else 'Email disponible',
+        'email': email
+    })
+
+
+@never_cache
+@require_http_methods(["GET"])
+def verifier_username_disponible(request):
+    """
+    API pour vérifier si un username est disponible
+    """
+    username = request.GET.get('username', '').strip().lower()
+    
+    if not username:
+        return JsonResponse({
+            'disponible': False,
+            'message': 'Username requis'
+        })
+    
+    # Validation format username
+    username_regex = r'^[a-zA-Z0-9_-]{3,30}$'
+    if not re.match(username_regex, username):
+        return JsonResponse({
+            'disponible': False,
+            'message': 'Username invalide (3-30 caractères alphanumériques)'
+        })
+    
+    # Vérifier si existe
+    existe = Utilisateur.objects.filter(username__iexact=username).exists()
+    
+    return JsonResponse({
+        'disponible': not existe,
+        'message': 'Username déjà utilisé' if existe else 'Username disponible',
+        'username': username
+    })
+
+
+# ============================================================================
+# ACTIVATION COMPTE PAR EMAIL
+# ============================================================================
+
+@never_cache
+@require_http_methods(["GET"])
+def activer_compte_view(request, token):
+    """
+    Activation du compte via lien email
+    (Si vous implémentez la validation email)
+    """
+    try:
+        # Décoder le token (utiliser JWT ou signing)
+        from django.core.signing import Signer, BadSignature
+        signer = Signer()
+        
+        try:
+            user_id = signer.unsign(token)
+        except BadSignature:
+            messages.error(request, 'Lien d\'activation invalide ou expiré.')
+            return redirect('gestion_compte:inscription')
+        
+        user = get_object_or_404(Utilisateur, id=user_id)
+        
+        if user.is_active:
+            messages.info(request, 'Votre compte est déjà activé.')
+            return redirect('gestion_compte:connexion')
+        
+        # Activer le compte
+        user.is_active = True
+        user.statut = 'actif'
+        user.save()
+        
+        logger.info(f"Compte activé: {user.email} (ID: {user.id})")
+        
+        messages.success(
+            request,
+            'Votre compte a été activé avec succès ! Vous pouvez maintenant vous connecter.'
+        )
+        return redirect('gestion_compte:connexion')
+    
+    except Exception as e:
+        logger.error(f"Erreur activation compte: {e}", exc_info=True)
+        messages.error(request, 'Une erreur s\'est produite lors de l\'activation.')
+        return redirect('gestion_compte:inscription')
+
+
+# ============================================================================
+# FONCTIONS UTILITAIRES
+# ============================================================================
+
+def generer_username(first_name, last_name, email):
+    """
+    Génère un username unique basé sur le nom/email
+    
+    Exemple:
+    - Jean Dupont → jean.dupont
+    - Si existe → jean.dupont2, jean.dupont3, etc.
+    """
+    # Nettoyer et normaliser
+    first = first_name.lower().strip()
+    last = last_name.lower().strip()
+    
+    # Remplacer caractères spéciaux
+    for char in [' ', 'é', 'è', 'ê', 'à', 'ù', 'ç']:
+        replacements = {
+            ' ': '.', 'é': 'e', 'è': 'e', 'ê': 'e',
+            'à': 'a', 'ù': 'u', 'ç': 'c'
+        }
+        first = first.replace(char, replacements.get(char, ''))
+        last = last.replace(char, replacements.get(char, ''))
+    
+    # Base username
+    base_username = f"{first}.{last}" if first and last else email.split('@')[0]
+    base_username = re.sub(r'[^a-z0-9._-]', '', base_username)
+    
+    # Vérifier unicité
+    username = base_username
+    counter = 1
+    
+    while Utilisateur.objects.filter(username=username).exists():
+        counter += 1
+        username = f"{base_username}{counter}"
+    
+    return username
+
+
+def obtenir_ip_client(request):
+    """
+    Récupère l'adresse IP réelle du client
+    Gère les proxy et load balancers
+    """
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    
+    if x_forwarded_for:
+        # Prendre la première IP (client réel)
+        ip = x_forwarded_for.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    
+    return ip
+
+
+def envoyer_email_bienvenue(user):
+    """
+    Envoie un email de bienvenue au nouvel utilisateur
+    
+    Contenu:
+    - Message de bienvenue
+    - Lien vers dashboard
+    - Informations utiles
+    - Support contact
+    """
+    try:
+        subject = 'Bienvenue sur notre plateforme de gestion pharmacie'
+        
+        # Contexte pour le template
+        context = {
+            'user': user,
+            'full_name': user.get_full_name(),
+            'dashboard_url': f"{settings.SITE_URL}/compte/dashboard/",
+            'support_email': getattr(settings, 'SUPPORT_EMAIL', 'support@example.com'),
+            'site_name': getattr(settings, 'SITE_NAME', 'Gestion Pharmacie'),
+        }
+        
+        # Render HTML et text
+        html_message = render_to_string('gestion_compte/emails/bienvenue.html', context)
+        text_message = strip_tags(html_message)
+        
+        # Envoyer
+        send_mail(
+            subject=subject,
+            message=text_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        
+        logger.info(f"Email de bienvenue envoyé à {user.email}")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Erreur envoi email à {user.email}: {e}")
+        return False
+
+
+def envoyer_email_activation(user, request):
+    """
+    Envoie un email d'activation avec token
+    (Si vous voulez valider l'email avant activation)
+    """
+    try:
+        from django.core.signing import Signer
+        signer = Signer()
+        token = signer.sign(str(user.id))
+        
+        activation_url = request.build_absolute_uri(
+            f'/compte/activer/{token}/'
+        )
+        
+        subject = 'Activez votre compte'
+        
+        context = {
+            'user': user,
+            'activation_url': activation_url,
+            'site_name': getattr(settings, 'SITE_NAME', 'Gestion Pharmacie'),
+        }
+        
+        html_message = render_to_string('gestion_compte/emails/activation.html', context)
+        text_message = strip_tags(html_message)
+        
+        send_mail(
+            subject=subject,
+            message=text_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        
+        logger.info(f"Email d'activation envoyé à {user.email}")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Erreur envoi email activation: {e}")
+        return False
+
+
+def valider_force_mot_de_passe(password):
+    """
+    Valide la force d'un mot de passe
+    
+    Critères:
+    - Minimum 8 caractères
+    - Au moins une majuscule
+    - Au moins une minuscule
+    - Au moins un chiffre
+    - Au moins un caractère spécial (optionnel)
+    
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if len(password) < 8:
+        return False, "Le mot de passe doit contenir au moins 8 caractères"
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "Le mot de passe doit contenir au moins une majuscule"
+    
+    if not re.search(r'[a-z]', password):
+        return False, "Le mot de passe doit contenir au moins une minuscule"
+    
+    if not re.search(r'[0-9]', password):
+        return False, "Le mot de passe doit contenir au moins un chiffre"
+    
+    # Optionnel: caractère spécial
+    if getattr(settings, 'PASSWORD_REQUIRE_SPECIAL_CHAR', False):
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            return False, "Le mot de passe doit contenir au moins un caractère spécial"
+    
+    return True, "Mot de passe valide"
+
+
+# ============================================================================
+# STATISTIQUES INSCRIPTION (Pour admin)
+# ============================================================================
+
+@login_required
+@require_http_methods(["GET"])
+def statistiques_inscriptions_view(request):
+    """
+    Vue des statistiques d'inscriptions (pour admin)
+    """
+    if not request.user.is_staff:
+        messages.error(request, "Accès non autorisé")
+        return redirect('gestion_compte:dashboard')
+    
+   
+    
+    # Inscriptions par jour (30 derniers jours)
+    inscriptions_par_jour = Utilisateur.objects.filter(
+        date_creation__gte=timezone.now() - timezone.timedelta(days=30)
+    ).annotate(
+        date=TruncDate('date_creation')
+    ).values('date').annotate(
+        total=Count('id')
+    ).order_by('date')
+    
+    # Statistiques globales
+    stats = {
+        'total_utilisateurs': Utilisateur.objects.count(),
+        'utilisateurs_actifs': Utilisateur.objects.filter(statut='actif').count(),
+        'inscriptions_mois': Utilisateur.objects.filter(
+            date_creation__month=timezone.now().month,
+            date_creation__year=timezone.now().year
+        ).count(),
+        'inscriptions_semaine': Utilisateur.objects.filter(
+            date_creation__gte=timezone.now() - timezone.timedelta(days=7)
+        ).count(),
+        'inscriptions_aujourd_hui': Utilisateur.objects.filter(
+            date_creation__date=timezone.now().date()
+        ).count(),
+    }
+    
+    context = {
+        'stats': stats,
+        'inscriptions_par_jour': list(inscriptions_par_jour),
+        'page_title': 'Statistiques Inscriptions',
+    }
+    
+    return render(request, 'gestion_compte/stats_inscriptions.html', context)
+
+
+# ============================================================================
+# VUE DE CONNEXION PRINCIPALE
+# ============================================================================
+
+@never_cache
+@require_http_methods(["GET", "POST"])
+def connexion_view(request):
+    """
+    Vue de connexion complète avec sécurité et logging
+    
+    Fonctionnalités:
+    - Vérification statut utilisateur
+    - Détection tentatives multiples (blocage après 5 tentatives)
+    - Logging des connexions (succès/échec)
+    - Détection IP et User Agent
+    - Gestion erreurs robuste
+    - Messages informatifs
+    - Redirection intelligente
+    """
+    
+    # Redirection si déjà connecté
+    if request.user.is_authenticated:
+        messages.info(request, 'Vous êtes déjà connecté.')
         return redirect('gestion_compte:dashboard')
     
     if request.method == 'POST':
         form = ConnexionForm(request, data=request.POST)
+        
         if form.is_valid():
             user = form.get_user()
             
-            # Vérifier si l'utilisateur peut se connecter
-            if not user.peut_se_connecter():
-                messages.error(request, f'Compte {user.get_statut_display()}. Contactez l\'administrateur.')
-                return redirect('gestion_compte:connexion')
+            try:
+                # ========================================
+                # ÉTAPE 1: Vérifications de sécurité
+                # ========================================
+                
+                # Vérifier si l'utilisateur peut se connecter
+                if not user.peut_se_connecter():
+                    # Enregistrer tentative échouée
+                    enregistrer_historique_connexion(
+                        request, 
+                        user, 
+                        succes=False, 
+                        raison=f"Compte {user.get_statut_display()}"
+                    )
+                    
+                    messages.error(
+                        request, 
+                        f'Compte {user.get_statut_display()}. '
+                        f'Contactez l\'administrateur pour plus d\'informations.'
+                    )
+                    return redirect('gestion_compte:connexion')
+                
+                # Vérifier si le compte est bloqué (trop de tentatives)
+                if user.statut == 'bloque':
+                    messages.error(
+                        request,
+                        'Votre compte est bloqué suite à trop de tentatives de connexion échouées. '
+                        'Veuillez contacter l\'administrateur.'
+                    )
+                    return redirect('gestion_compte:connexion')
+                
+                # ========================================
+                # ÉTAPE 2: Connexion réussie
+                # ========================================
+                
+                with transaction.atomic():
+                    # Enregistrer l'historique de connexion
+                    enregistrer_historique_connexion(
+                        request, 
+                        user, 
+                        succes=True
+                    )
+                    
+                    # Connexion de l'utilisateur
+                    login(request, user)
+                    
+                    # Mettre à jour les informations de connexion
+                    user.date_derniere_connexion = timezone.now()
+                    user.ip_derniere_connexion = obtenir_ip_client(request)
+                    user.reinitialiser_tentatives_connexion()
+                    user.save(update_fields=[
+                        'date_derniere_connexion',
+                        'ip_derniere_connexion',
+                        'tentatives_connexion'
+                    ])
+                    
+                    # Logger la connexion
+                    logger.info(
+                        f"Connexion réussie: {user.email} "
+                        f"(ID: {user.id}) depuis IP {user.ip_derniere_connexion}"
+                    )
+                
+                # ========================================
+                # ÉTAPE 3: Vérifications post-connexion
+                # ========================================
+                
+                # CORRECTION: Vérifier si is_temporary_password existe
+                # Si le champ existe, forcer changement de mot de passe
+                if hasattr(user, 'is_temporary_password') and user.is_temporary_password:
+                    messages.warning(
+                        request,
+                        'Vous devez changer votre mot de passe temporaire.'
+                    )
+                    return redirect('gestion_compte:changer_mot_de_passe')
+                
+                # Vérifier si le profil est complet
+                if not user.telephone or not user.ville:
+                    messages.info(
+                        request,
+                        'Veuillez compléter votre profil pour une meilleure expérience.'
+                    )
+                
+                # ========================================
+                # ÉTAPE 4: Redirection et message de bienvenue
+                # ========================================
+                
+                # Message de bienvenue personnalisé
+                heure = timezone.now().hour
+                if heure < 12:
+                    salutation = "Bonjour"
+                elif heure < 18:
+                    salutation = "Bon après-midi"
+                else:
+                    salutation = "Bonsoir"
+                
+                messages.success(
+                    request,
+                    f'{salutation} {user.get_full_name()} ! Connexion réussie.'
+                )
+                
+                # Redirection intelligente
+                next_url = request.GET.get('next')
+                if next_url:
+                    return redirect(next_url)
+                elif user.is_superuser or user.is_staff:
+                    return redirect('admin:index')
+                else:
+                    return redirect('gestion_compte:dashboard')
             
-            # Enregistrer l'historique de connexion
-            HistoriqueConnexion.objects.create(
-                utilisateur=user,
-                pharmacie=user.pharmacie_active,
-                ip_address=request.META.get('REMOTE_ADDR', '0.0.0.0'),
-                user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                succes=True
-            )
-            
-            # Connexion
-            login(request, user)
-            user.date_derniere_connexion = timezone.now()
-            user.ip_derniere_connexion = request.META.get('REMOTE_ADDR')
-            user.reinitialiser_tentatives_connexion()
-            user.save()
-            
-            messages.success(request, f'Bienvenue {user.get_full_name()} !')
-            return redirect('gestion_compte:dashboard')
+            except Exception as e:
+                logger.error(f"Erreur lors de la connexion: {e}", exc_info=True)
+                messages.error(
+                    request,
+                    "Une erreur s'est produite lors de la connexion. "
+                    "Veuillez réessayer."
+                )
+        
         else:
-            messages.error(request, 'Email ou mot de passe incorrect.')
+            # ========================================
+            # Formulaire invalide (mauvais identifiants)
+            # ========================================
+            
+            # Récupérer l'email pour incrémenter les tentatives
+            email = request.POST.get('username', '').strip().lower()
+            
+            if email:
+                try:
+                    user = Utilisateur.objects.get(email__iexact=email)
+                    
+                    # Incrémenter tentatives de connexion
+                    user.incrementer_tentatives_connexion()
+                    
+                    # Enregistrer tentative échouée
+                    enregistrer_historique_connexion(
+                        request,
+                        user,
+                        succes=False,
+                        raison="Mot de passe incorrect"
+                    )
+                    
+                    # Message adapté selon le nombre de tentatives
+                    tentatives_restantes = 5 - user.tentatives_connexion
+                    if tentatives_restantes > 0:
+                        messages.error(
+                            request,
+                            f'Email ou mot de passe incorrect. '
+                            f'Attention: {tentatives_restantes} tentative(s) restante(s) '
+                            f'avant blocage du compte.'
+                        )
+                    else:
+                        messages.error(
+                            request,
+                            'Votre compte a été bloqué suite à trop de tentatives échouées. '
+                            'Contactez l\'administrateur.'
+                        )
+                    
+                    logger.warning(
+                        f"Tentative connexion échouée: {email} "
+                        f"({user.tentatives_connexion}/5 tentatives)"
+                    )
+                
+                except Utilisateur.DoesNotExist:
+                    # Ne pas révéler que l'email n'existe pas (sécurité)
+                    messages.error(request, 'Email ou mot de passe incorrect.')
+                    logger.warning(f"Tentative connexion avec email inexistant: {email}")
+            
+            else:
+                messages.error(request, 'Veuillez remplir tous les champs.')
+    
     else:
         form = ConnexionForm()
-    context = {
-        'form': form
+    
+    # Statistiques optionnelles pour la page
+    stats = {
+        'total_utilisateurs': Utilisateur.objects.filter(is_active=True).count(),
+        'connexions_aujourd_hui': HistoriqueConnexion.objects.filter(
+            date_connexion__date=timezone.now().date(),
+            succes=True
+        ).count(),
     }
-    return render(request, 'gestion_compte/connexion.html',context )
+    
+    context = {
+        'form': form,
+        'stats': stats,
+        'page_title': 'Connexion',
+        'show_captcha': getattr(settings, 'ENABLE_CAPTCHA', False),
+    }
+    
+    return render(request, 'gestion_compte/connexion.html', context)
 
 
-# ====== deconnexion =======
+# ============================================================================
+# CONNEXION AJAX (Pour formulaires dynamiques)
+# ============================================================================
+
+@never_cache
+@require_http_methods(["POST"])
+def connexion_ajax_view(request):
+    """
+    Version AJAX de la connexion
+    Retourne JSON pour intégration frontend moderne
+    """
+    
+    if request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'error': 'Vous êtes déjà connecté.'
+        }, status=400)
+    
+    try:
+        form = ConnexionForm(request, data=request.POST)
+        
+        if form.is_valid():
+            user = form.get_user()
+            
+            # Vérifier statut
+            if not user.peut_se_connecter():
+                enregistrer_historique_connexion(request, user, succes=False)
+                
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Compte {user.get_statut_display()}.'
+                }, status=403)
+            
+            # Connexion
+            with transaction.atomic():
+                enregistrer_historique_connexion(request, user, succes=True)
+                login(request, user)
+                
+                user.date_derniere_connexion = timezone.now()
+                user.ip_derniere_connexion = obtenir_ip_client(request)
+                user.reinitialiser_tentatives_connexion()
+                user.save()
+            
+            logger.info(f"Connexion AJAX réussie: {user.email}")
+            
+            # Vérifier mot de passe temporaire
+            need_password_change = (
+                hasattr(user, 'is_temporary_password') and 
+                user.is_temporary_password
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Bienvenue {user.get_full_name()} !',
+                'user': {
+                    'id': str(user.id),
+                    'email': user.email,
+                    'full_name': user.get_full_name(),
+                    'username': user.username,
+                },
+                'redirect_url': '/compte/changer-mot-de-passe/' if need_password_change else '/compte/dashboard/',
+                'need_password_change': need_password_change
+            })
+        
+        else:
+            email = request.POST.get('username', '')
+            
+            if email:
+                try:
+                    user = Utilisateur.objects.get(email__iexact=email)
+                    user.incrementer_tentatives_connexion()
+                    enregistrer_historique_connexion(request, user, succes=False)
+                    
+                    tentatives_restantes = 5 - user.tentatives_connexion
+                    
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Email ou mot de passe incorrect.',
+                        'tentatives_restantes': tentatives_restantes
+                    }, status=401)
+                
+                except Utilisateur.DoesNotExist:
+                    pass
+            
+            return JsonResponse({
+                'success': False,
+                'error': 'Email ou mot de passe incorrect.'
+            }, status=401)
+    
+    except Exception as e:
+        logger.error(f"Erreur connexion AJAX: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': 'Une erreur inattendue s\'est produite.'
+        }, status=500)
+
+# ============================================================================
+# FONCTIONS UTILITAIRES
+# ============================================================================
+
+def obtenir_ip_client(request):
+    """
+    Récupère l'adresse IP réelle du client
+    Gère les proxy et load balancers
+    """
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    
+    if x_forwarded_for:
+        # Prendre la première IP (client réel)
+        ip = x_forwarded_for.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR', '0.0.0.0')
+    
+    return ip
+
+
+def enregistrer_historique_connexion(request, user, succes=True, raison=''):
+    """
+    Enregistre l'historique de connexion
+    
+    Args:
+        request: HttpRequest
+        user: Utilisateur
+        succes: bool - Si la connexion a réussi
+        raison: str - Raison de l'échec (optionnel)
+    """
+    try:
+        HistoriqueConnexion.objects.create(
+            utilisateur=user,
+            pharmacie=user.pharmacie_active,
+            ip_address=obtenir_ip_client(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            succes=succes,
+            raison_echec=raison if not succes else ''
+        )
+    except Exception as e:
+        logger.error(f"Erreur enregistrement historique: {e}")
+
+
+def verifier_compte_actif(user):
+    """
+    Vérifie si le compte est actif et peut se connecter
+    
+    Returns:
+        tuple: (is_active, error_message)
+    """
+    if not user.is_active:
+        return False, "Compte désactivé. Contactez l'administrateur."
+    
+    if user.statut != 'actif':
+        statut_messages = {
+            'suspendu': 'Compte suspendu.',
+            'bloque': 'Compte bloqué suite à trop de tentatives échouées.',
+            'desactive': 'Compte désactivé.',
+        }
+        return False, statut_messages.get(user.statut, 'Compte non actif.')
+    
+    return True, ''
+
+
+# ============================================================================
+# STATISTIQUES CONNEXIONS (Pour admin)
+# ============================================================================
+
 @login_required
+@require_http_methods(["GET"])
+def statistiques_connexions_view(request):
+    """
+    Vue des statistiques de connexions (pour admin)
+    """
+    if not request.user.is_staff:
+        messages.error(request, "Accès non autorisé")
+        return redirect('gestion_compte:dashboard')
+    
+    
+    # Connexions par jour (30 derniers jours)
+    connexions_par_jour = HistoriqueConnexion.objects.filter(
+        date_connexion__gte=timezone.now() - timezone.timedelta(days=30),
+        succes=True
+    ).annotate(
+        date=TruncDate('date_connexion')
+    ).values('date').annotate(
+        total=Count('id')
+    ).order_by('date')
+    
+    # Statistiques globales
+    stats = {
+        'total_connexions': HistoriqueConnexion.objects.filter(succes=True).count(),
+        'connexions_mois': HistoriqueConnexion.objects.filter(
+            date_connexion__month=timezone.now().month,
+            date_connexion__year=timezone.now().year,
+            succes=True
+        ).count(),
+        'connexions_semaine': HistoriqueConnexion.objects.filter(
+            date_connexion__gte=timezone.now() - timezone.timedelta(days=7),
+            succes=True
+        ).count(),
+        'connexions_aujourd_hui': HistoriqueConnexion.objects.filter(
+            date_connexion__date=timezone.now().date(),
+            succes=True
+        ).count(),
+        'tentatives_echouees_mois': HistoriqueConnexion.objects.filter(
+            date_connexion__month=timezone.now().month,
+            date_connexion__year=timezone.now().year,
+            succes=False
+        ).count(),
+        'comptes_bloques': Utilisateur.objects.filter(statut='bloque').count(),
+    }
+    
+    context = {
+        'stats': stats,
+        'connexions_par_jour': list(connexions_par_jour),
+        'page_title': 'Statistiques Connexions',
+    }
+    
+    return render(request, 'gestion_compte/stats_connexions.html', context)
+
+
+
+# ============================================================================
+# VUE DÉCONNEXION PRINCIPALE
+# ============================================================================
+
+@never_cache
+@login_required
+@require_http_methods(["GET", "POST"])
 def deconnexion_view(request):
-    """Vue de déconnexion"""
-    logout(request)
-    messages.info(request, 'Vous avez été déconnecté.')
-    return redirect('gestion_compte:connexion')
+    """
+    Vue de déconnexion complète avec:
+    - Enregistrement historique
+    - Logging
+    - Nettoyage session
+    - Message personnalisé
+    - Page de confirmation (optionnel)
+    """
+    
+    # ========================================
+    # OPTION 1: Déconnexion immédiate (GET)
+    # ========================================
+    if request.method == 'GET' and not getattr(settings, 'LOGOUT_CONFIRMATION_REQUIRED', False):
+        return process_logout(request)
+    
+    # ========================================
+    # OPTION 2: Page de confirmation (GET)
+    # ========================================
+    if request.method == 'GET':
+        return render(request, 'gestion_compte/deconnexion_confirmation.html', {
+            'user': request.user,
+            'page_title': 'Déconnexion',
+        })
+    
+    # ========================================
+    # OPTION 3: Déconnexion après confirmation (POST)
+    # ========================================
+    if request.method == 'POST':
+        return process_logout(request)
+
+
+def process_logout(request):
+    """
+    Traite la déconnexion de l'utilisateur
+    
+    Étapes:
+    1. Sauvegarder les infos utilisateur
+    2. Enregistrer l'historique
+    3. Logger l'action
+    4. Nettoyer la session
+    5. Déconnecter
+    6. Rediriger avec message
+    """
+    
+    try:
+        # ========================================
+        # ÉTAPE 1: Sauvegarder les infos avant déconnexion
+        # ========================================
+        user = request.user
+        user_name = user.get_full_name()
+        user_email = user.email
+        user_id = str(user.id)
+        
+        # Calculer durée de session
+        session_start = request.session.get('session_start_time')
+        session_duration = None
+        
+        if session_start:
+            from datetime import datetime
+            start_time = datetime.fromisoformat(session_start)
+            session_duration = (timezone.now() - start_time).total_seconds()
+        
+        # ========================================
+        # ÉTAPE 2: Enregistrer dans l'historique
+        # ========================================
+        try:
+            from .models import HistoriqueConnexion
+            
+            # Mettre à jour la dernière connexion
+            derniere_connexion = HistoriqueConnexion.objects.filter(
+                utilisateur=user,
+                succes=True,
+                date_deconnexion__isnull=True
+            ).order_by('-date_connexion').first()
+            
+            if derniere_connexion:
+                derniere_connexion.date_deconnexion = timezone.now()
+                
+                if session_duration:
+                    derniere_connexion.duree_session = int(session_duration)
+                
+                derniere_connexion.save(update_fields=['date_deconnexion', 'duree_session'])
+                
+                logger.info(
+                    f"Historique déconnexion enregistré: {user_email} "
+                    f"(durée: {format_duration(session_duration)})"
+                )
+        
+        except (ImportError, AttributeError) as e:
+            logger.warning(f"Impossible d'enregistrer l'historique: {e}")
+        
+        # ========================================
+        # ÉTAPE 3: Mettre à jour l'utilisateur
+        # ========================================
+        try:
+            with transaction.atomic():
+                # Mettre à jour date dernière activité
+                user.date_derniere_connexion = timezone.now()
+                user.save(update_fields=['date_derniere_connexion'])
+        
+        except Exception as e:
+            logger.error(f"Erreur mise à jour utilisateur: {e}")
+        
+        # ========================================
+        # ÉTAPE 4: Logger la déconnexion
+        # ========================================
+        logger.info(
+            f"Déconnexion: {user_name} ({user_email}) "
+            f"depuis IP {obtenir_ip_client(request)}"
+        )
+        
+        # ========================================
+        # ÉTAPE 5: Nettoyer la session
+        # ========================================
+        # Sauvegarder les messages avant de vider
+        storage = messages.get_messages(request)
+        storage.used = False  # Garder les messages
+        
+        # Vider la session mais garder certaines infos
+        session_keys_to_keep = getattr(settings, 'LOGOUT_KEEP_SESSION_KEYS', [])
+        session_backup = {key: request.session.get(key) for key in session_keys_to_keep}
+        
+        # Vider la session
+        request.session.flush()
+        
+        # Restaurer les clés à garder
+        for key, value in session_backup.items():
+            if value is not None:
+                request.session[key] = value
+        
+        # ========================================
+        # ÉTAPE 6: Déconnecter l'utilisateur
+        # ========================================
+        logout(request)
+        
+        # ========================================
+        # ÉTAPE 7: Message personnalisé
+        # ========================================
+        heure = timezone.now().hour
+        
+        if heure < 12:
+            salutation = "Bonne journée"
+        elif heure < 18:
+            salutation = "Bonne fin de journée"
+        else:
+            salutation = "Bonne soirée"
+        
+        messages.success(
+            request,
+            f'Au revoir {user_name} ! Vous avez été déconnecté avec succès. {salutation} !'
+        )
+        
+        # Ajouter info durée session si disponible
+        if session_duration:
+            duree_formatee = format_duration(session_duration)
+            messages.info(
+                request,
+                f'Durée de votre session : {duree_formatee}'
+            )
+        
+        # ========================================
+        # ÉTAPE 8: Redirection
+        # ========================================
+        # URL de redirection personnalisée
+        redirect_url = request.GET.get('next')
+        
+        if redirect_url and is_safe_url(redirect_url, request):
+            return redirect(redirect_url)
+        
+        # Redirection par défaut
+        return redirect(
+            getattr(settings, 'LOGOUT_REDIRECT_URL', 'gestion_compte:connexion')
+        )
+    
+    except Exception as e:
+        logger.error(f"Erreur lors de la déconnexion: {e}", exc_info=True)
+        
+        # Déconnexion forcée même en cas d'erreur
+        logout(request)
+        
+        messages.warning(
+            request,
+            'Vous avez été déconnecté, mais une erreur s\'est produite lors du traitement.'
+        )
+        
+        return redirect('gestion_compte:connexion')
+
+# ============================================================================
+# DÉCONNEXION DE TOUS LES APPAREILS
+# ============================================================================
+
+@never_cache
+@login_required
+@require_http_methods(["POST"])
+def deconnexion_tous_appareils_view(request):
+    """
+    Déconnecte l'utilisateur de tous les appareils
+    En supprimant toutes ses sessions
+    """
+    
+    try:
+        from django.contrib.sessions.models import Session
+        from django.contrib.auth import get_user_model
+        
+        user = request.user
+        user_id = str(user.id)
+        
+        # Récupérer toutes les sessions actives de l'utilisateur
+        sessions_supprimees = 0
+        
+        for session in Session.objects.all():
+            session_data = session.get_decoded()
+            if session_data.get('_auth_user_id') == user_id:
+                session.delete()
+                sessions_supprimees += 1
+        
+        logger.info(
+            f"Déconnexion tous appareils: {user.email} "
+            f"({sessions_supprimees} sessions supprimées)"
+        )
+        
+        messages.success(
+            request,
+            f'Vous avez été déconnecté de tous vos appareils ({sessions_supprimees} sessions).'
+        )
+        
+        return redirect('gestion_compte:connexion')
+    
+    except Exception as e:
+        logger.error(f"Erreur déconnexion tous appareils: {e}", exc_info=True)
+        
+        logout(request)
+        messages.error(request, 'Erreur lors de la déconnexion de tous les appareils.')
+        
+        return redirect('gestion_compte:connexion')
+
+
+# ============================================================================
+# DÉCONNEXION AJAX
+# ============================================================================
+
+@never_cache
+@login_required
+@require_http_methods(["POST"])
+def deconnexion_ajax_view(request):
+    """
+    Version AJAX de la déconnexion
+    Retourne JSON pour applications modernes
+    """
+    
+    try:
+        user = request.user
+        user_name = user.get_full_name()
+        
+        # Logger
+        logger.info(f"Déconnexion AJAX: {user.email}")
+        
+        # Déconnecter
+        logout(request)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Au revoir {user_name} !',
+            'redirect_url': '/connexion/'
+        })
+    
+    except Exception as e:
+        logger.error(f"Erreur déconnexion AJAX: {e}")
+        
+        return JsonResponse({
+            'success': False,
+            'error': 'Erreur lors de la déconnexion'
+        }, status=500)
+
+
+# ============================================================================
+# FONCTIONS UTILITAIRES
+# ============================================================================
+
+def obtenir_ip_client(request):
+    """Récupère l'IP réelle du client"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR', '0.0.0.0')
+    
+    return ip
+
+
+def format_duration(seconds):
+    """
+    Formate une durée en secondes en format lisible
+    
+    Exemples:
+    - 65 → "1 minute 5 secondes"
+    - 3600 → "1 heure"
+    - 7265 → "2 heures 1 minute"
+    """
+    if not seconds:
+        return "0 seconde"
+    
+    seconds = int(seconds)
+    
+    heures = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secondes = seconds % 60
+    
+    parts = []
+    
+    if heures > 0:
+        parts.append(f"{heures} heure{'s' if heures > 1 else ''}")
+    
+    if minutes > 0:
+        parts.append(f"{minutes} minute{'s' if minutes > 1 else ''}")
+    
+    if secondes > 0 and not heures:  # Afficher secondes seulement si < 1h
+        parts.append(f"{secondes} seconde{'s' if secondes > 1 else ''}")
+    
+    return ' '.join(parts)
+
+
+def is_safe_url(url, request):
+    """
+    Vérifie si l'URL de redirection est sûre
+    Empêche les redirections malveillantes
+    """
+    from urllib.parse import urlparse
+    
+    if not url:
+        return False
+    
+    # URL relative = sûre
+    if url.startswith('/'):
+        return True
+    
+    # Vérifier le domaine
+    parsed = urlparse(url)
+    
+    if not parsed.netloc:
+        return True
+    
+    # Vérifier que c'est le même domaine
+    request_host = request.get_host()
+    
+    return parsed.netloc == request_host
+
+
+# ============================================================================
+# VUE STATISTIQUES DÉCONNEXIONS (Admin)
+# ============================================================================
+
+@login_required
+@require_http_methods(["GET"])
+def statistiques_deconnexions_view(request):
+    """
+    Statistiques des déconnexions (pour admin)
+    """
+    if not request.user.is_staff:
+        messages.error(request, "Accès non autorisé")
+        return redirect('gestion_compte:dashboard')
+    
+    try:
+        from django.db.models import Avg, Count
+        from django.db.models.functions import TruncDate
+        from .models import HistoriqueConnexion
+        
+        # Sessions aujourd'hui
+        aujourd_hui = timezone.now().date()
+        
+        sessions_aujourd_hui = HistoriqueConnexion.objects.filter(
+            date_connexion__date=aujourd_hui,
+            succes=True
+        )
+        
+        # Statistiques
+        stats = {
+            'sessions_actives': HistoriqueConnexion.objects.filter(
+                date_deconnexion__isnull=True,
+                succes=True
+            ).count(),
+            
+            'sessions_aujourd_hui': sessions_aujourd_hui.count(),
+            
+            'deconnexions_aujourd_hui': HistoriqueConnexion.objects.filter(
+                date_deconnexion__date=aujourd_hui
+            ).count(),
+            
+            'duree_moyenne_session': HistoriqueConnexion.objects.filter(
+                duree_session__isnull=False
+            ).aggregate(
+                avg=Avg('duree_session')
+            )['avg'] or 0,
+        }
+        
+        # Durée moyenne formatée
+        stats['duree_moyenne_formatee'] = format_duration(stats['duree_moyenne_session'])
+        
+        # Déconnexions par jour (30 derniers jours)
+        deconnexions_par_jour = HistoriqueConnexion.objects.filter(
+            date_deconnexion__gte=timezone.now() - timezone.timedelta(days=30),
+            date_deconnexion__isnull=False
+        ).annotate(
+            date=TruncDate('date_deconnexion')
+        ).values('date').annotate(
+            total=Count('id')
+        ).order_by('date')
+        
+        context = {
+            'stats': stats,
+            'deconnexions_par_jour': list(deconnexions_par_jour),
+            'page_title': 'Statistiques Déconnexions',
+        }
+        
+        return render(request, 'gestion_compte/stats_deconnexions.html', context)
+    
+    except Exception as e:
+        logger.error(f"Erreur stats déconnexions: {e}", exc_info=True)
+        messages.error(request, "Erreur lors du chargement des statistiques")
+        return redirect('gestion_compte:dashboard')
 
 
 

@@ -2,243 +2,435 @@
 
 <!-- [ Header ]  -->
 <header class="pc-header">
-  <div class="header-wrapper"> <!-- [Mobile Media Block] start -->
-<div class="me-auto pc-mob-drp">
-  <ul class="list-unstyled">
-    <!-- ======= Menu collapse Icon ===== -->
-    <li class="pc-h-item pc-sidebar-collapse">
-      <a href="#" class="pc-head-link ms-0" id="sidebar-hide">
-        <i class="ti ti-menu-2"></i>
-      </a>
-    </li>
-    <li class="pc-h-item pc-sidebar-popup">
-      <a href="#" class="pc-head-link ms-0" id="mobile-collapse">
-        <i class="ti ti-menu-2"></i>
-      </a>
-    </li>
-    <li class="dropdown pc-h-item d-inline-flex d-md-none">
-      <a
-        class="pc-head-link dropdown-toggle arrow-none m-0"
-        data-bs-toggle="dropdown"
-        href="#"
-        role="button"
-        aria-haspopup="false"
-        aria-expanded="false"
-      >
-        <i class="ti ti-search"></i>
-      </a>
-      <div class="dropdown-menu pc-h-dropdown drp-search">
-        <form class="px-3">
-          <div class="form-group mb-0 d-flex align-items-center">
-            <i data-feather="search"></i>
-            <input type="search" class="form-control border-0 shadow-none" placeholder="Search here. . .">
+  <div class="header-wrapper"> 
+    <!-- [Mobile Media Block] start -->
+    <div class="me-auto pc-mob-drp">
+      <ul class="list-unstyled">
+        <!-- ======= Menu collapse Icon ===== -->
+        <li class="pc-h-item pc-sidebar-collapse">
+          <a href="#" class="pc-head-link ms-0" id="sidebar-hide">
+            <i class="ti ti-menu-2"></i>
+          </a>
+        </li>
+        <li class="pc-h-item pc-sidebar-popup">
+          <a href="#" class="pc-head-link ms-0" id="mobile-collapse">
+            <i class="ti ti-menu-2"></i>
+          </a>
+        </li>
+        
+        <!-- Recherche mobile -->
+        <li class="dropdown pc-h-item d-inline-flex d-md-none">
+          <a class="pc-head-link dropdown-toggle arrow-none m-0" 
+             data-bs-toggle="dropdown" 
+             href="#" 
+             role="button"
+             aria-haspopup="false" 
+             aria-expanded="false">
+            <i class="ti ti-search"></i>
+          </a>
+          <div class="dropdown-menu pc-h-dropdown drp-search">
+            <form class="px-3" method="GET" action="">
+              <div class="form-group mb-0 d-flex align-items-center">
+                <i class="ti ti-search"></i>
+                <input type="search" 
+                       name="q"
+                       class="form-control border-0 shadow-none" 
+                       placeholder="Rechercher un produit, client...">
+              </div>
+            </form>
           </div>
-        </form>
-      </div>
-    </li>
-    <li class="pc-h-item d-none d-md-inline-flex">
-      <form class="header-search">
-        <i data-feather="search" class="icon-search"></i>
-        <input type="search" class="form-control" placeholder="Search here. . .">
-      </form>
-    </li>
-  </ul>
-</div>
-<!-- [Mobile Media Block end] -->
-<div class="ms-auto">
-  <ul class="list-unstyled">
-    <li class="dropdown pc-h-item">
-      <a
-        class="pc-head-link dropdown-toggle arrow-none me-0"
-        data-bs-toggle="dropdown"
-        href="#"
-        role="button"
-        aria-haspopup="false"
-        aria-expanded="false"
-      >
-        <i class="ti ti-mail"></i>
-      </a>
-      <div class="dropdown-menu dropdown-notification dropdown-menu-end pc-h-dropdown">
-        <div class="dropdown-header d-flex align-items-center justify-content-between">
-          <h5 class="m-0">Message</h5>
-          <a href="#!" class="pc-head-link bg-transparent"><i class="ti ti-x text-danger"></i></a>
-        </div>
-        <div class="dropdown-divider"></div>
-        <div class="dropdown-header px-0 text-wrap header-notification-scroll position-relative" style="max-height: calc(100vh - 215px)">
-          <div class="list-group list-group-flush w-100">
-            <a class="list-group-item list-group-item-action">
-              <div class="d-flex">
-                <div class="flex-shrink-0">
-                  <img src="../assets/images/user/avatar-2.jpg" alt="user-image" class="user-avtar">
-                </div>
-                <div class="flex-grow-1 ms-1">
-                  <span class="float-end text-muted">3:00 AM</span>
-                  <p class="text-body mb-1">It's <b>Cristina danny's</b> birthday today.</p>
-                  <span class="text-muted">2 min ago</span>
-                </div>
-              </div>
-            </a>
-            <a class="list-group-item list-group-item-action">
-              <div class="d-flex">
-                <div class="flex-shrink-0">
-                  <img src="../assets/images/user/avatar-1.jpg" alt="user-image" class="user-avtar">
-                </div>
-                <div class="flex-grow-1 ms-1">
-                  <span class="float-end text-muted">6:00 PM</span>
-                  <p class="text-body mb-1"><b>Aida Burg</b> commented your post.</p>
-                  <span class="text-muted">5 August</span>
-                </div>
-              </div>
-            </a>
-            <a class="list-group-item list-group-item-action">
-              <div class="d-flex">
-                <div class="flex-shrink-0">
-                  <img src="../assets/images/user/avatar-3.jpg" alt="user-image" class="user-avtar">
-                </div>
-                <div class="flex-grow-1 ms-1">
-                  <span class="float-end text-muted">2:45 PM</span>
-                  <p class="text-body mb-1"><b>There was a failure to your setup.</b></p>
-                  <span class="text-muted">7 hours ago</span>
-                </div>
-              </div>
-            </a>
-            <a class="list-group-item list-group-item-action">
-              <div class="d-flex">
-                <div class="flex-shrink-0">
-                  <img src="../assets/images/user/avatar-4.jpg" alt="user-image" class="user-avtar">
-                </div>
-                <div class="flex-grow-1 ms-1">
-                  <span class="float-end text-muted">9:10 PM</span>
-                  <p class="text-body mb-1"><b>Cristina Danny </b> invited to join <b> Meeting.</b></p>
-                  <span class="text-muted">Daily scrum meeting time</span>
-                </div>
-              </div>
-            </a>
-          </div>
-        </div>
-        <div class="dropdown-divider"></div>
-        <div class="text-center py-2">
-          <a href="#!" class="link-primary">View all</a>
-        </div>
-      </div>
-    </li>
-    <li class="dropdown pc-h-item header-user-profile">
-      <a
-        class="pc-head-link dropdown-toggle arrow-none me-0"
-        data-bs-toggle="dropdown"
-        href="#"
-        role="button"
-        aria-haspopup="false"
-        data-bs-auto-close="outside"
-        aria-expanded="false"
-      >
-        <img src="{% static 'assets/images/user/avatar-2.jpg' %}" alt="user-image" class="user-avtar">
-        <span></span>
-      </a>
-      <div class="dropdown-menu dropdown-user-profile dropdown-menu-end pc-h-dropdown">
-        <div class="dropdown-header">
-          <div class="d-flex mb-1">
-            <div class="flex-shrink-0">
-              <img src="{% static 'assets/images/user/avatar-2.jpg' %}" alt="user-image" class="user-avtar wid-35">
+        </li>
+        
+        <!-- Recherche desktop -->
+        <li class="pc-h-item d-none d-md-inline-flex">
+          <form class="header-search" method="GET" action="">
+            <i class="ti ti-search icon-search"></i>
+            <input type="search" 
+                   name="q"
+                   class="form-control" 
+                   placeholder="Rechercher un produit, client, commande...">
+          </form>
+        </li>
+      </ul>
+    </div>
+    <!-- [Mobile Media Block end] -->
+    
+    <div class="ms-auto">
+      <ul class="list-unstyled">
+        
+        <!-- Notifications -->
+        <li class="dropdown pc-h-item">
+          <a class="pc-head-link dropdown-toggle arrow-none me-0"
+             data-bs-toggle="dropdown"
+             href="#"
+             role="button"
+             aria-haspopup="false"
+             aria-expanded="false">
+            <i class="ti ti-bell"></i>
+            {% if notifications_count > 0 %}
+            <span class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle">
+              {{ notifications_count }}
+            </span>
+            {% endif %}
+          </a>
+          <div class="dropdown-menu dropdown-notification dropdown-menu-end pc-h-dropdown">
+            <div class="dropdown-header d-flex align-items-center justify-content-between">
+              <h5 class="m-0">Notifications</h5>
+              <a href="#!" class="pc-head-link bg-transparent">
+                <i class="ti ti-x text-danger"></i>
+              </a>
             </div>
-            <div class="flex-grow-1 ms-3">
-              <h6 class="mb-1"></h6>
-              <span>UI/UX Designer</span>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-header px-0 text-wrap header-notification-scroll position-relative" 
+                 style="max-height: calc(100vh - 215px)">
+              <div class="list-group list-group-flush w-100">
+                
+                {% if notifications %}
+                  {% for notification in notifications %}
+                  <a href="{{ notification.url }}" class="list-group-item list-group-item-action">
+                    <div class="d-flex">
+                      <div class="flex-shrink-0">
+                        <div class="user-avtar bg-light-{{ notification.type }}">
+                          <i class="ti ti-{{ notification.icon }}"></i>
+                        </div>
+                      </div>
+                      <div class="flex-grow-1 ms-3">
+                        <span class="float-end text-muted">{{ notification.created_at|timesince }}</span>
+                        <p class="text-body mb-1"><b>{{ notification.title }}</b></p>
+                        <span class="text-muted">{{ notification.message|truncatewords:10 }}</span>
+                      </div>
+                    </div>
+                  </a>
+                  {% endfor %}
+                {% else %}
+                  <div class="text-center py-4">
+                    <i class="ti ti-bell-off text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">Aucune notification</p>
+                  </div>
+                {% endif %}
+                
+              </div>
             </div>
-            <a href="#!" class="pc-head-link bg-transparent"><i class="ti ti-power text-danger"></i></a>
+            <div class="dropdown-divider"></div>
+            <div class="text-center py-2">
+              <a href="" class="link-primary">
+                Voir toutes les notifications
+              </a>
+            </div>
           </div>
-        </div>
-        <ul class="nav drp-tabs nav-fill nav-tabs" id="mydrpTab" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button
-              class="nav-link active"
-              id="drp-t1"
-              data-bs-toggle="tab"
-              data-bs-target="#drp-tab-1"
-              type="button"
-              role="tab"
-              aria-controls="drp-tab-1"
-              aria-selected="true"
-              ><i class="ti ti-user"></i> Profile</button
-            >
-          </li>
-          <li class="nav-item" role="presentation">
-            <button
-              class="nav-link"
-              id="drp-t2"
-              data-bs-toggle="tab"
-              data-bs-target="#drp-tab-2"
-              type="button"
-              role="tab"
-              aria-controls="drp-tab-2"
-              aria-selected="false"
-              ><i class="ti ti-settings"></i> Parametres</button
-            >
-          </li>
-        </ul>
-        <div class="tab-content" id="mysrpTabContent">
-          <div class="tab-pane fade show active" id="drp-tab-1" role="tabpanel" aria-labelledby="drp-t1" tabindex="0">
-            <a href="#!" class="dropdown-item">
-              <i class="ti ti-edit-circle"></i>
-              <span>Edit Profile</span>
-            </a>
-            <a href="{% url 'gestion_compte:voir-profile' %}" class="dropdown-item">
-              <i class="ti ti-user"></i>
-              <span>Profile</span>
-            </a>
-            <a href="#!" class="dropdown-item">
-              <i class="ti ti-clipboard-list"></i>
-              <span>Social Profile</span>
-            </a>
-            <a href="#!" class="dropdown-item">
-              <i class="ti ti-wallet"></i>
-              <span>Billing</span>
-            </a>
-            <a href="{% url 'gestion_compte:deconnexion' %}" class="dropdown-item">
-              <i class="ti ti-power"></i>
-              <span>Logout</span>
-            </a>
-            <a href="{% url 'gestion_compte:connexion' %}" class="dropdown-item">
-              <i class="ti ti-power"></i>
-              <span>Connexion</span>
-            </a>
-            <a href="{% url 'gestion_compte:inscription' %}" class="dropdown-item">
-              <i class="ti ti-power"></i>
-              <span>Compte</span>
-            </a>
+        </li>
+        
+        <!-- Raccourcis rapides -->
+        <li class="dropdown pc-h-item d-none d-lg-inline-flex">
+          <a class="pc-head-link dropdown-toggle arrow-none me-0"
+             data-bs-toggle="dropdown"
+             href="#"
+             role="button"
+             aria-haspopup="false"
+             aria-expanded="false">
+            <i class="ti ti-layout-grid-add"></i>
+          </a>
+          <div class="dropdown-menu dropdown-menu-end pc-h-dropdown">
+            <div class="dropdown-header">
+              <h5 class="m-0">Raccourcis</h5>
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="px-3 pb-3">
+              <div class="row g-2">
+                <div class="col-6">
+                  <a href="" 
+                     class="d-block text-center p-3 bg-light-primary rounded">
+                    <i class="ti ti-shopping-cart d-block fs-3 text-primary mb-2"></i>
+                    <span class="small">Nouvelle Vente</span>
+                  </a>
+                </div>
+                <div class="col-6">
+                  <a href="" 
+                     class="d-block text-center p-3 bg-light-success rounded">
+                    <i class="ti ti-package d-block fs-3 text-success mb-2"></i>
+                    <span class="small">Ajouter Produit</span>
+                  </a>
+                </div>
+                <div class="col-6">
+                  <a href="" 
+                     class="d-block text-center p-3 bg-light-warning rounded">
+                    <i class="ti ti-user-plus d-block fs-3 text-warning mb-2"></i>
+                    <span class="small">Nouveau Client</span>
+                  </a>
+                </div>
+                <div class="col-6">
+                  <a href="" 
+                     class="d-block text-center p-3 bg-light-danger rounded">
+                    <i class="ti ti-alert-triangle d-block fs-3 text-danger mb-2"></i>
+                    <span class="small">Alertes Stock</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </li>
+        
+        <!-- Profil utilisateur -->
+        <li class="dropdown pc-h-item header-user-profile">
+          <a class="pc-head-link dropdown-toggle arrow-none me-0"
+             data-bs-toggle="dropdown"
+             href="#"
+             role="button"
+             aria-haspopup="false"
+             data-bs-auto-close="outside"
+             aria-expanded="false">
+            {% if user.photo %}
+              <img src="{{ user.photo.url }}" alt="{{ user.get_full_name }}" class="user-avtar">
+            {% else %}
+              <div class="user-avtar bg-primary text-white">
+                {{ user.first_name.0|upper }}{{ user.last_name.0|upper }}
+              </div>
+            {% endif %}
+            <span>
+              <span class="d-none d-md-inline-block">{{ user.get_full_name|truncatewords:2 }}</span>
+            </span>
+          </a>
+          
+          <div class="dropdown-menu dropdown-user-profile dropdown-menu-end pc-h-dropdown">
+            <div class="dropdown-header">
+              <div class="d-flex mb-1">
+                <div class="flex-shrink-0">
+                  {% if user.photo %}
+                    <img src="{{ user.photo.url }}" alt="{{ user.get_full_name }}" class="user-avtar wid-35">
+                  {% else %}
+                    <div class="user-avtar wid-35 bg-primary text-white">
+                      {{ user.first_name.0|upper }}{{ user.last_name.0|upper }}
+                    </div>
+                  {% endif %}
+                </div>
+                <div class="flex-grow-1 ms-3">
+                  <h6 class="mb-1">{{ user.get_full_name }}</h6>
+                  <span class="small text-muted">
+                    {% if user.pharmacie_active %}
+                      {{ user.pharmacie_active.nom_commercial }}
+                    {% else %}
+                      Pharmacien
+                    {% endif %}
+                  </span>
+                  <div class="small text-muted">{{ user.email }}</div>
+                </div>
+                <a href="{% url 'gestion_compte:deconnexion' %}" 
+                   class="pc-head-link bg-transparent"
+                   title="Déconnexion">
+                  <i class="ti ti-power text-danger"></i>
+                </a>
+              </div>
+            </div>
             
+            <ul class="nav drp-tabs nav-fill nav-tabs" id="mydrpTab" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active"
+                        id="drp-t1"
+                        data-bs-toggle="tab"
+                        data-bs-target="#drp-tab-1"
+                        type="button"
+                        role="tab"
+                        aria-controls="drp-tab-1"
+                        aria-selected="true">
+                  <i class="ti ti-user"></i> Profil
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link"
+                        id="drp-t2"
+                        data-bs-toggle="tab"
+                        data-bs-target="#drp-tab-2"
+                        type="button"
+                        role="tab"
+                        aria-controls="drp-tab-2"
+                        aria-selected="false">
+                  <i class="ti ti-settings"></i> Paramètres
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link"
+                        id="drp-t3"
+                        data-bs-toggle="tab"
+                        data-bs-target="#drp-tab-3"
+                        type="button"
+                        role="tab"
+                        aria-controls="drp-tab-3"
+                        aria-selected="false">
+                  <i class="ti ti-building-store"></i> Pharmacie
+                </button>
+              </li>
+            </ul>
+            
+            <div class="tab-content" id="mysrpTabContent">
+              <!-- Tab 1: Profil -->
+              <div class="tab-pane fade show active" 
+                   id="drp-tab-1" 
+                   role="tabpanel" 
+                   aria-labelledby="drp-t1" 
+                   tabindex="0">
+                <a href="{% url 'gestion_compte:voir-profile' %}" class="dropdown-item">
+                  <i class="ti ti-user"></i>
+                  <span>Mon Profil</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-edit-circle"></i>
+                  <span>Modifier Profil</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-history"></i>
+                  <span>Mes Activités</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-clipboard-list"></i>
+                  <span>Mes Commandes</span>
+                </a>
+                <div class="dropdown-divider"></div>
+                <a href="{% url 'gestion_compte:deconnexion' %}" class="dropdown-item text-danger">
+                  <i class="ti ti-power"></i>
+                  <span>Déconnexion</span>
+                </a>
+              </div>
+              
+              <!-- Tab 2: Paramètres -->
+              <div class="tab-pane fade" 
+                   id="drp-tab-2" 
+                   role="tabpanel" 
+                   aria-labelledby="drp-t2" 
+                   tabindex="0">
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-settings"></i>
+                  <span>Paramètres Généraux</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-lock"></i>
+                  <span>Confidentialité</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-shield-check"></i>
+                  <span>Sécurité</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-bell-ringing"></i>
+                  <span>Notifications</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-palette"></i>
+                  <span>Préférences</span>
+                </a>
+              </div>
+              
+              <!-- Tab 3: Gestion Pharmacie -->
+              <div class="tab-pane fade" 
+                   id="drp-tab-3" 
+                   role="tabpanel" 
+                   aria-labelledby="drp-t3" 
+                   tabindex="0">
+                {% if user.pharmacie_active %}
+                  <div class="px-3 py-2 bg-light">
+                    <div class="d-flex align-items-center">
+                      <i class="ti ti-building-store text-primary fs-4 me-2"></i>
+                      <div>
+                        <h6 class="mb-0">{{ user.pharmacie_active.nom_commercial }}</h6>
+                        <small class="text-muted">{{ user.pharmacie_active.ville }}</small>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="dropdown-divider"></div>
+                {% endif %}
+                
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-dashboard"></i>
+                  <span>Tableau de Bord</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-package"></i>
+                  <span>Inventaire</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-shopping-cart"></i>
+                  <span>Ventes</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-users"></i>
+                  <span>Clients</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-truck"></i>
+                  <span>Fournisseurs</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-report-analytics"></i>
+                  <span>Rapports</span>
+                </a>
+                
+                {% if user.is_staff %}
+                <div class="dropdown-divider"></div>
+                <a href="{" class="dropdown-item">
+                  <i class="ti ti-users-group"></i>
+                  <span>Gestion Employés</span>
+                </a>
+                <a href="" class="dropdown-item">
+                  <i class="ti ti-settings-cog"></i>
+                  <span>Paramètres Pharmacie</span>
+                </a>
+                {% endif %}
+              </div>
+            </div>
           </div>
-          <div class="tab-pane fade" id="drp-tab-2" role="tabpanel" aria-labelledby="drp-t2" tabindex="0">
-            <a href="#!" class="dropdown-item">
-              <i class="ti ti-help"></i>
-              <span>Soutien</span>
-            </a>
-            <a href="{% url 'gestion_compte:parametre_compte' %}" class="dropdown-item">
-              <i class="ti ti-user"></i>
-              <span>Paramètres generle</span>
-            </a>
-            <a href="{% url 'gestion_compte:centre-confidentialite' %}" class="dropdown-item">
-              <i class="ti ti-lock"></i>
-              <span>Confidentialite</span>
-            </a>
-            <a href="" class="dropdown-item">
-              <i class="ti ti-user"></i>
-              <span>Ressources Humaines</span>
-            </a>
-            <a href="#!" class="dropdown-item">
-              <i class="ti ti-messages"></i>
-              <span>Retour d'information</span>
-            </a>
-            <a href="#!" class="dropdown-item">
-              <i class="ti ti-list"></i>
-              <span>Histoire</span>
-            </a>
-          </div>
-        </div>
-      </div>
-    </li>
-  </ul>
-</div>
- </div>
+        </li>
+        
+      </ul>
+    </div>
+  </div>
 </header>
 <!-- [ Header ] end -->
+
+<!-- Style personnalisé -->
+<style>
+.user-avtar {
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-avtar.wid-35 {
+    width: 35px;
+    height: 35px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.bg-light-primary { background-color: rgba(13, 110, 253, 0.1) !important; }
+.bg-light-success { background-color: rgba(25, 135, 84, 0.1) !important; }
+.bg-light-warning { background-color: rgba(255, 193, 7, 0.1) !important; }
+.bg-light-danger { background-color: rgba(220, 53, 69, 0.1) !important; }
+.bg-light-info { background-color: rgba(13, 202, 240, 0.1) !important; }
+
+.dropdown-item {
+    transition: all 0.3s ease;
+}
+
+.dropdown-item:hover {
+    background-color: rgba(13, 110, 253, 0.1);
+    padding-left: 1.5rem;
+}
+
+.badge {
+    font-size: 0.65rem;
+    padding: 0.25em 0.5em;
+}
+
+.header-search {
+    max-width: 400px;
+}
+
+@media (max-width: 768px) {
+    .header-search {
+        max-width: 200px;
+    }
+}
+</style>
